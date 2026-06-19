@@ -1,0 +1,125 @@
+---
+/*
+  Figure.astro — the shared frame for every visualization.
+  DOM contract (figure modules rely on this):
+    .figure__stage[data-figure="<id>"]   <- the mount root
+      > canvas.figure__canvas             <- drawing surface
+      > .figure__controls[data-controls]  <- module injects controls here
+  Caption + a collapsible text description (the reduced-motion / SR fallback)
+  sit outside the stage so they read even when JS never runs.
+*/
+import type { Figure } from '../content/chapters';
+
+interface Props {
+  figure: Figure;
+  /** aspect-ratio for the stage; tweak per figure where useful */
+  ratio?: string;
+}
+const { figure, ratio = '16 / 10' } = Astro.props;
+---
+
+<figure class="figure" id={`fig-${figure.id}-${Math.random().toString(36).slice(2, 7)}`}>
+  {figure.spec && <p class="figure__spec spec">{figure.spec}</p>}
+
+  <div
+    class="figure__stage"
+    data-figure={figure.id}
+    style={`--fig-ratio: ${ratio};`}
+  >
+    <canvas class="figure__canvas" aria-hidden="true"></canvas>
+    <div class="figure__controls" data-controls role="group" aria-label="Figure controls"></div>
+    <noscript>
+      <p class="figure__noscript mono">
+        This figure is interactive and needs JavaScript. The text description below explains what it shows.
+      </p>
+    </noscript>
+  </div>
+
+  <figcaption class="figure__caption">{figure.caption}</figcaption>
+
+  <details class="figure__desc">
+    <summary class="mono">Text description of this figure</summary>
+    <p>{figure.description}</p>
+  </details>
+</figure>
+
+<style>
+  .figure {
+    margin: 0;
+    width: 100%;
+  }
+
+  .figure__spec {
+    margin: 0 0 var(--space-2);
+    color: var(--phosphor);
+  }
+
+  .figure__stage {
+    position: relative;
+    width: 100%;
+    aspect-ratio: var(--fig-ratio);
+    background: var(--ink-2);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .figure__canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: none; /* allow drag interactions without page scroll fighting */
+  }
+
+  .figure__controls {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: center;
+    padding: var(--space-2) var(--space-3);
+    background: linear-gradient(to top, rgba(11, 20, 24, 0.92), rgba(11, 20, 24, 0));
+    font-family: var(--font-mono);
+    font-size: var(--step--1);
+  }
+  .figure__controls:empty {
+    display: none;
+  }
+
+  .figure__noscript {
+    position: absolute;
+    inset: auto var(--space-3) var(--space-3) var(--space-3);
+    color: var(--bone-dim);
+  }
+
+  .figure__caption {
+    margin: var(--space-3) 0 0;
+    color: var(--bone-dim);
+    font-size: var(--step--1);
+    line-height: 1.5;
+    max-width: var(--measure);
+  }
+
+  .figure__desc {
+    margin-top: var(--space-2);
+    max-width: var(--measure);
+  }
+  .figure__desc summary {
+    cursor: pointer;
+    color: var(--bone-dim);
+    list-style-position: outside;
+  }
+  .figure__desc summary:hover {
+    color: var(--bone);
+  }
+  .figure__desc p {
+    margin-top: var(--space-2);
+    color: var(--bone-dim);
+    font-size: var(--step--1);
+  }
+</style>

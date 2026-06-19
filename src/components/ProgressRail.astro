@@ -1,0 +1,205 @@
+---
+/*
+  ProgressRail.astro — slim left rail: a scroll-progress line + a table of
+  contents marking the eight chapters. Collapses to a top bar on mobile.
+*/
+interface Item {
+  id: string;
+  num: string;
+  title: string;
+}
+interface Props {
+  items: Item[];
+}
+const { items } = Astro.props;
+---
+
+<nav class="rail" aria-label="Chapters">
+  <a href="#hero" class="rail__brand">
+    <span class="rail__brand-mark mono">[ AM ]</span>
+    <span class="rail__brand-name">Adaptive Machines</span>
+  </a>
+
+  <div class="rail__progress" aria-hidden="true">
+    <span class="rail__progress-fill" data-progress-fill></span>
+  </div>
+
+  <ol class="rail__list">
+    {
+      items.map((it) => (
+        <li class="rail__item">
+          <a href={`#${it.id}`} class="rail__link" data-rail-link={it.id}>
+            <span class="rail__num mono">{it.num}</span>
+            <span class="rail__title">{it.title}</span>
+          </a>
+        </li>
+      ))
+    }
+  </ol>
+</nav>
+
+<style>
+  .rail {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    width: var(--rail-w);
+    flex: 0 0 var(--rail-w);
+    padding: var(--space-4) var(--space-3);
+    border-right: 1px solid var(--hairline);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    overflow-y: auto;
+  }
+
+  .rail__brand {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    text-decoration: none;
+    color: var(--bone);
+  }
+  .rail__brand-mark {
+    color: var(--phosphor);
+  }
+  .rail__brand-name {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: var(--step-0);
+    letter-spacing: -0.01em;
+  }
+
+  .rail__progress {
+    position: relative;
+    height: 2px;
+    background: var(--hairline);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .rail__progress-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 0%;
+    /* the seam: silicon → biology, mirroring the essay's argument */
+    background: linear-gradient(to right, var(--phosphor), var(--synapse));
+    transition: width 0.08s linear;
+  }
+
+  .rail__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .rail__link {
+    display: grid;
+    grid-template-columns: 2.2em 1fr;
+    gap: 0.6em;
+    align-items: baseline;
+    padding: 0.4em 0.5em;
+    text-decoration: none;
+    color: var(--bone-dim);
+    border-left: 2px solid transparent;
+    border-radius: 0 var(--radius) var(--radius) 0;
+    transition: color 0.16s var(--ease-organic), border-color 0.16s var(--ease-organic), background 0.16s var(--ease-organic);
+    line-height: 1.25;
+  }
+  .rail__link:hover {
+    color: var(--bone);
+    background: var(--ink-2);
+  }
+  .rail__num {
+    color: var(--graphite);
+  }
+  .rail__title {
+    font-family: var(--font-display);
+    font-size: var(--step--1);
+    font-weight: 500;
+  }
+
+  .rail__link.is-active {
+    color: var(--bone);
+    border-left-color: var(--phosphor);
+  }
+  .rail__link.is-active .rail__num {
+    color: var(--phosphor);
+  }
+
+  /* --- Mobile: rail becomes a quiet top bar with progress only --- */
+  @media (max-width: 60rem) {
+    .rail {
+      position: sticky;
+      top: 0;
+      height: auto;
+      width: 100%;
+      flex-basis: auto;
+      flex-direction: row;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-2) var(--space-3);
+      border-right: none;
+      border-bottom: 1px solid var(--hairline);
+      background: rgba(11, 20, 24, 0.86);
+      backdrop-filter: blur(8px);
+      z-index: 40;
+    }
+    .rail__brand-name {
+      display: none;
+    }
+    .rail__progress {
+      flex: 1;
+    }
+    .rail__list {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  // Active-chapter highlighting + scroll progress.
+  const links = new Map();
+  document.querySelectorAll('[data-rail-link]').forEach((a) => {
+    links.set(a.getAttribute('data-rail-link'), a);
+  });
+  const fill = document.querySelector('[data-progress-fill]');
+
+  // Highlight whichever section currently owns the middle of the viewport.
+  const io = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((e) => {
+        if (!e.isIntersecting) return;
+        const id = e.target.id;
+        links.forEach((a, key) => a.classList.toggle('is-active', key === id));
+      });
+    },
+    { rootMargin: '-45% 0px -45% 0px', threshold: 0 }
+  );
+  document.querySelectorAll('[data-chapter]').forEach((s) => io.observe(s));
+
+  // Scroll-progress fill.
+  let ticking = false;
+  function updateProgress() {
+    const h = document.documentElement;
+    const max = h.scrollHeight - h.clientHeight;
+    const p = max > 0 ? (h.scrollTop / max) * 100 : 0;
+    if (fill) fill.style.width = p.toFixed(2) + '%';
+    ticking = false;
+  }
+  window.addEventListener(
+    'scroll',
+    () => {
+      if (!ticking) {
+        ticking = true;
+        requestAnimationFrame(updateProgress);
+      }
+    },
+    { passive: true }
+  );
+  updateProgress();
+</script>

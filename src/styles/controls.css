@@ -1,0 +1,124 @@
+/* =====================================================================
+   Shared figure-control styling.
+   Figure modules build their controls with these class names so every
+   visualization gets the same keyboard-operable, AA-contrast affordances.
+   ===================================================================== */
+
+.ctrl {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5ch;
+  font-family: var(--font-mono);
+  font-size: var(--step--1);
+  color: var(--bone);
+}
+
+.ctrl-label {
+  color: var(--bone-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+/* Buttons + segmented toggles */
+.ctrl-btn,
+.ctrl-seg > button {
+  font-family: var(--font-mono);
+  font-size: var(--step--1);
+  color: var(--bone);
+  background: var(--ink-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: 0.45em 0.8em;
+  cursor: pointer;
+  transition: background 0.16s var(--ease-organic), color 0.16s var(--ease-organic), border-color 0.16s var(--ease-organic);
+}
+.ctrl-btn:hover,
+.ctrl-seg > button:hover {
+  border-color: var(--phosphor);
+}
+.ctrl-btn:active {
+  transform: translateY(1px);
+}
+
+.ctrl-seg {
+  display: inline-flex;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+}
+.ctrl-seg > button {
+  border: none;
+  border-radius: 0;
+  border-right: 1px solid var(--hairline);
+}
+.ctrl-seg > button:last-child {
+  border-right: none;
+}
+.ctrl-seg > button[aria-pressed='true'] {
+  background: var(--phosphor);
+  color: var(--ink);
+}
+/* When a segmented control represents the bio side, it presses amber. */
+.ctrl-seg.is-bio > button[aria-pressed='true'] {
+  background: var(--synapse);
+  color: var(--ink);
+}
+.ctrl-seg.is-oversight > button[aria-pressed='true'] {
+  background: var(--oversight);
+  color: var(--ink);
+}
+
+/* Range sliders */
+.ctrl-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: clamp(7rem, 22vw, 12rem);
+  height: 4px;
+  background: var(--graphite);
+  border-radius: 999px;
+  outline-offset: 4px;
+  cursor: pointer;
+}
+.ctrl-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--phosphor);
+  border: 2px solid var(--ink);
+  cursor: pointer;
+}
+.ctrl-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--phosphor);
+  border: 2px solid var(--ink);
+  cursor: pointer;
+}
+.ctrl-slider.is-bio::-webkit-slider-thumb { background: var(--synapse); }
+.ctrl-slider.is-bio::-moz-range-thumb { background: var(--synapse); }
+
+/* A live numeric/value readout */
+.ctrl-readout {
+  font-variant-numeric: tabular-nums;
+  color: var(--phosphor);
+  white-space: nowrap;
+}
+.ctrl-readout.is-bio { color: var(--synapse); }
+
+/* A small inline legend chip — pairs color with a label (never color alone) */
+.ctrl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5ch;
+}
+.ctrl-chip::before {
+  content: '';
+  width: 0.8em;
+  height: 0.8em;
+  border-radius: 2px;
+  background: var(--c, var(--bone));
+}

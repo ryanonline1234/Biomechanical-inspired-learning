@@ -1,0 +1,96 @@
+---
+import Figure from './Figure.astro';
+import { hero } from '../content/chapters';
+---
+
+<header class="hero" id="hero" data-chapter>
+  <div class="hero__viz">
+    <Figure figure={hero.figure} ratio="1 / 1" />
+    <p class="hero__seed-note mono">{hero.note}</p>
+  </div>
+
+  <div class="hero__intro">
+    <p class="hero__eyebrow spec">{hero.eyebrow}</p>
+    <h1 class="hero__title">{hero.title}</h1>
+    <p class="hero__thesis">{hero.thesis}</p>
+    <a href="#ch1-dynamical" class="hero__scroll mono">
+      Begin reading <span aria-hidden="true">↓</span>
+    </a>
+  </div>
+</header>
+
+<style>
+  .hero {
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: var(--space-6);
+    align-items: center;
+    min-height: 100vh;
+    padding: var(--space-6) var(--space-5);
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .hero__viz {
+    order: 2;
+  }
+
+  .hero__seed-note {
+    margin-top: var(--space-3);
+    color: var(--bone-dim);
+    max-width: 32ch;
+    line-height: 1.5;
+  }
+
+  .hero__intro {
+    order: 1;
+    max-width: 34rem;
+  }
+
+  .hero__eyebrow {
+    color: var(--synapse);
+    margin-bottom: var(--space-3);
+  }
+
+  .hero__title {
+    margin: 0 0 var(--space-4);
+    /* the seam: a cool-to-warm wash across the wordmark */
+    background: linear-gradient(105deg, var(--bone) 30%, var(--phosphor) 64%, var(--synapse) 96%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .hero__thesis {
+    font-size: var(--step-1);
+    line-height: 1.5;
+    color: var(--bone);
+    max-width: 34rem;
+  }
+
+  .hero__scroll {
+    display: inline-block;
+    margin-top: var(--space-4);
+    color: var(--phosphor);
+    text-decoration: none;
+    border-bottom: 1px solid var(--hairline);
+    padding-bottom: 0.25em;
+  }
+  .hero__scroll:hover {
+    color: var(--bone);
+  }
+
+  @media (max-width: 60rem) {
+    .hero {
+      grid-template-columns: 1fr;
+      gap: var(--space-4);
+      min-height: auto;
+      padding: var(--space-5) var(--space-3);
+    }
+    .hero__viz {
+      order: 2;
+    }
+    .hero__intro {
+      order: 1;
+    }
+  }
+</style>

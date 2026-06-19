@@ -1,0 +1,18 @@
+{
+  "name": "adaptive-machines",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Adaptive Machines — a scroll-driven visual essay on brain-inspired architectures and the bitter lesson.",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "astro": "^5.5.2",
+    "d3-scale": "^4.0.2",
+    "d3-shape": "^3.2.0"
+  }
+}

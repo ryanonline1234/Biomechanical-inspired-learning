@@ -1,0 +1,158 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import ProgressRail from '../components/ProgressRail.astro';
+import Hero from '../components/Hero.astro';
+import Chapter from '../components/Chapter.astro';
+import { chapters, references } from '../content/chapters';
+
+const railItems = chapters.map((c) => ({ id: c.id, num: c.num, title: c.title }));
+const title = 'Adaptive Machines — why brain-inspired AI keeps losing, and the one thing that would make it win';
+const description =
+  'A scroll-driven visual essay on brain-inspired architectures: neural ODEs, liquid networks, plasticity, cellular automata, the hardware lottery and neuromorphic chips — honest about why elegant ideas keep losing to scale.';
+---
+
+<BaseLayout title={title} description={description}>
+  <div class="shell">
+    <ProgressRail items={railItems} />
+
+    <main id="main" class="content">
+      <Hero />
+
+      {chapters.map((c) => <Chapter chapter={c} />)}
+
+      <footer class="colophon" id="further-reading">
+        <h2 class="colophon__title">Further reading</h2>
+        <p class="colophon__lede">
+          The claims above are load-bearing. These are the actual sources, by author and title.
+          Links go only to canonical pages.
+        </p>
+        <ul class="refs">
+          {
+            references.map((r) => (
+              <li class="ref">
+                <span class="ref__authors">{r.authors}</span>
+                {r.href ? (
+                  <a class="ref__title" href={r.href} target="_blank" rel="noopener noreferrer">
+                    {r.title}
+                  </a>
+                ) : (
+                  <span class="ref__title">{r.title}</span>
+                )}
+                {r.year && <span class="ref__year mono">{r.year}</span>}
+              </li>
+            ))
+          }
+        </ul>
+
+        <div class="colophon__foot">
+          <p class="mono">
+            Built as a static Astro site. Visualizations are plain canvas + requestAnimationFrame;
+            every one has a reduced-motion fallback. The figures are illustrative of the principles
+            they name, not trained models.
+          </p>
+          <p class="colophon__thesis">
+            The running test, one more time: <em>is the magic in the unit, or in the interaction?</em>
+            When it lives in the interaction, no single component can hold it.
+          </p>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    import { initFigures } from '../components/figures/index.js';
+    initFigures();
+  </script>
+</BaseLayout>
+
+<style>
+  .shell {
+    display: flex;
+    align-items: flex-start;
+    max-width: 100rem;
+    margin: 0 auto;
+  }
+  .content {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .colophon {
+    padding: var(--space-7) var(--space-5);
+  }
+  .colophon__title {
+    font-size: var(--step-2);
+  }
+  .colophon__lede {
+    color: var(--bone-dim);
+    max-width: var(--measure);
+    margin-bottom: var(--space-5);
+  }
+
+  .refs {
+    list-style: none;
+    margin: 0 0 var(--space-6);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .ref {
+    display: grid;
+    grid-template-columns: minmax(0, 16rem) minmax(0, 1fr) auto;
+    gap: var(--space-3);
+    align-items: baseline;
+    padding: var(--space-3) 0;
+    border-top: 1px solid var(--hairline);
+  }
+  .ref:last-child {
+    border-bottom: 1px solid var(--hairline);
+  }
+  .ref__authors {
+    font-family: var(--font-display);
+    font-weight: 500;
+    color: var(--bone);
+  }
+  .ref__title {
+    color: var(--bone-dim);
+  }
+  a.ref__title:hover {
+    color: var(--phosphor);
+  }
+  .ref__year {
+    color: var(--graphite);
+    text-align: right;
+  }
+
+  .colophon__foot {
+    max-width: var(--measure);
+    color: var(--bone-dim);
+  }
+  .colophon__foot .mono {
+    line-height: 1.6;
+  }
+  .colophon__thesis {
+    margin-top: var(--space-4);
+    color: var(--bone);
+    font-size: var(--step-1);
+  }
+  .colophon__thesis em {
+    color: var(--phosphor);
+    font-style: italic;
+  }
+
+  @media (max-width: 60rem) {
+    .shell {
+      flex-direction: column;
+    }
+    .colophon {
+      padding: var(--space-6) var(--space-3);
+    }
+    .ref {
+      grid-template-columns: 1fr;
+      gap: 0.2rem;
+    }
+    .ref__year {
+      text-align: left;
+    }
+  }
+</style>
