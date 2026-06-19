@@ -28,10 +28,12 @@ export default function mount(stage) {
   const boneRGB = hexToRgb(pal.bone);
 
   // Gauge sweep: a semicircle over the pivot. Canvas angle 0 points right,
-  // PI points left; sweeping clockwise (false) traces the UPPER half. So the
-  // LEFT pole is PI (capability) and the RIGHT pole is 0 (energy).
+  // PI points left, and angle grows clockwise (y is down). The needle, fill and
+  // ticks must ride the UPPER dome, so the right pole is 2*PI — sweeping PI->2PI
+  // passes through 3*PI/2 (straight up). Ending at 0 instead would sweep the
+  // lower half and leave the needle hanging below the pivot.
   const A_LEFT = Math.PI;
-  const A_RIGHT = 0;
+  const A_RIGHT = 2 * Math.PI;
 
   // Dial value. Default near 0.15 so the opening state reads "today, brute
   // force wins" — capability is still the binding constraint.

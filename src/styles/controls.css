@@ -105,7 +105,7 @@
 .ctrl-readout {
   font-variant-numeric: tabular-nums;
   color: var(--phosphor);
-  white-space: nowrap;
+  min-width: 0; /* allow long readouts to wrap instead of overflowing the bar */
 }
 .ctrl-readout.is-bio { color: var(--synapse); }
 

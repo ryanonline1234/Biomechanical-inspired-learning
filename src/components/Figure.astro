@@ -26,13 +26,15 @@ const { figure, ratio = '16 / 10' } = Astro.props;
     data-figure={figure.id}
     style={`--fig-ratio: ${ratio};`}
   >
-    <canvas class="figure__canvas" aria-hidden="true"></canvas>
+    <div class="figure__surface">
+      <canvas class="figure__canvas" aria-hidden="true"></canvas>
+      <noscript>
+        <p class="figure__noscript mono">
+          This figure is interactive and needs JavaScript. The text description below explains what it shows.
+        </p>
+      </noscript>
+    </div>
     <div class="figure__controls" data-controls role="group" aria-label="Figure controls"></div>
-    <noscript>
-      <p class="figure__noscript mono">
-        This figure is interactive and needs JavaScript. The text description below explains what it shows.
-      </p>
-    </noscript>
   </div>
 
   <figcaption class="figure__caption">{figure.caption}</figcaption>
@@ -57,11 +59,18 @@ const { figure, ratio = '16 / 10' } = Astro.props;
   .figure__stage {
     position: relative;
     width: 100%;
-    aspect-ratio: var(--fig-ratio);
     background: var(--ink-2);
     border: 1px solid var(--hairline);
     border-radius: var(--radius);
     overflow: hidden;
+  }
+
+  /* The drawing surface holds the figure's aspect ratio; the canvas fills it.
+     Controls sit below this, in normal flow. */
+  .figure__surface {
+    position: relative;
+    width: 100%;
+    aspect-ratio: var(--fig-ratio);
   }
 
   .figure__canvas {
@@ -73,17 +82,17 @@ const { figure, ratio = '16 / 10' } = Astro.props;
     touch-action: none; /* allow drag interactions without page scroll fighting */
   }
 
+  /* Controls dock beneath the surface rather than overlaying it, so a figure's
+     own bottom legends, axes and readouts can never collide with the slider /
+     legend bar. */
   .figure__controls {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
     align-items: center;
     padding: var(--space-2) var(--space-3);
-    background: linear-gradient(to top, rgba(11, 20, 24, 0.92), rgba(11, 20, 24, 0));
+    background: rgba(11, 20, 24, 0.55);
+    border-top: 1px solid var(--hairline);
     font-family: var(--font-mono);
     font-size: var(--step--1);
   }
