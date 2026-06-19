@@ -1,28 +1,39 @@
 /* =====================================================================
    DendriticUnfold — chapter 5.3 (dendritic computation).
 
-   A single biological neuron (one amber dot, "1 neuron") UNFOLDS into the
-   multi-layer artificial network needed to imitate its input/output
-   behaviour: a 5–8 layer deep net (Beniaguev, Segev & London, Neuron 2021).
-   Here a 1 -> 4 -> 6 -> 6 -> 4 -> 2 stack stands in for that depth.
+   A persistent SIDE-BY-SIDE scale comparison. On the LEFT, pinned at full
+   opacity the whole time, a single cortical neuron (amber): soma + a few
+   dendrite stubs + one axon. On the RIGHT, the deep artificial network you
+   need to imitate that one neuron's input/output behaviour — a vertical
+   stack of layers (depth is the dominant axis), drawn as a faint phosphor
+   GHOST at idle so the scene is always legible, never blank.
 
-   - Click the dot (or the unfold/fold ctrl-btn) to toggle.
-   - Nodes spawn and connections draw in with organic easing (progress 0->1).
-   - Reduced motion: toggle snaps instantly between the dot state and the
-     fully-unfolded network, via fig.render() (no animation).
+   Unfold/fold brings the ghost net up to full opacity. The depth is made
+   countable: layers stack vertically and carry the annotation
+   "6 layers deep — needs 5–8 to match one neuron (Beniaguev 2021)".
+
+   - Click the neuron (or the unfold/fold ctrl-btn) to toggle.
+   - The morph runs via fig.play(); fig.stop() once it settles (motion only).
+   - Reduced motion: the FULL co-present comparison in one static frame
+     (neuron + fully-lit, labelled net) — not a bare dot.
 
    Colour pairs with text labels, never alone:
-     amber  = neuron (biology)
-     phosphor = network needed to imitate it (silicon)
+     amber    = one cortical neuron (biology)
+     phosphor = deep net needed to imitate it (silicon)
    ===================================================================== */
 
-import { createFigure, palette, clamp } from '../lib/canvas.js';
+import { createFigure, palette, clamp, lerp, drawText } from '../lib/canvas.js';
 
-// Layer widths for the imitation network. The single neuron (left) blossoms
-// into ~6 layers — a stand-in for the 5–8 deep net the 2021 paper reports.
+// Depth-ordered layer widths for the imitation network. Six layers — a
+// concrete stand-in for the 5–8 deep net the 2021 paper reports. Stacked
+// vertically (top = input, bottom = output) so DEPTH reads as the main axis.
 const LAYERS = [1, 4, 6, 6, 4, 2];
+const DEPTH = LAYERS.length; // 6
 
-// Organic ease — slow in, slow out — so spawning feels biological, not linear.
+// Idle ghost opacity for the imitation net (legible, not blank, not loud).
+const GHOST = 0.22;
+
+// Organic ease — slow in, slow out.
 function easeInOutCubic(t) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
@@ -32,141 +43,249 @@ export default function mount(stage) {
   const controls = stage.querySelector('[data-controls]');
   const pal = palette();
 
+  let fig;              // assigned after createFigure so update() can stop it
   let unfolded = false; // target state
-  let progress = 0;     // 0 = single dot, 1 = full network
+  let progress = 0;     // 0 = ghost net (idle), 1 = full-opacity net
   let animating = false;
-  const DUR = 0.9;      // seconds for the unfold/fold
+  const DUR = 0.85;     // seconds for the unfold/fold morph
 
-  // Cache node screen positions per draw so the click test matches the render.
-  let nodePositions = []; // [{x,y,layer,row}]
-  let dotPos = { x: 0, y: 0, r: 14 };
+  // Neuron hit region, recomputed each draw so the click test matches render.
+  let neuron = { x: 0, y: 0, r: 16 };
 
-  // Compute node layout for a given env. The first layer's single node is the
-  // "seed" that the original amber dot morphs into.
-  function layout(e) {
-    nodePositions = [];
-    const padX = 64;
-    const padY = 48;
-    const usableW = e.w - padX * 2;
-    const usableH = e.h - padY * 2;
-    for (let li = 0; li < LAYERS.length; li++) {
-      const count = LAYERS[li];
-      const x = padX + (LAYERS.length === 1 ? 0 : (li / (LAYERS.length - 1)) * usableW);
+  // --- geometry ------------------------------------------------------------
+  // Left third: the cortical neuron. Right two-thirds: the layer stack.
+  function geom(e) {
+    const { w, h } = e;
+    const padTop = 30;
+    const padBot = 64; // headroom for the citation line anchored to the stack
+    const colX = w * 0.30;            // boundary between neuron col and net col
+    const neuronCx = w * 0.155;
+    const neuronCy = h * 0.52;
+
+    // Net stack occupies the right region.
+    const netLeft = colX + 40;
+    const netRight = w - 72; // leave room on the right for the depth scale + numbers
+    const stackTop = padTop + 12;
+    const stackBot = h - padBot;
+    const rowGap = (stackBot - stackTop) / (DEPTH - 1);
+
+    // Node positions, layer by layer (vertical stack).
+    const layers = LAYERS.map((count, li) => {
+      const y = stackTop + li * rowGap;
+      const spanW = netRight - netLeft;
+      const nodes = [];
       for (let r = 0; r < count; r++) {
-        // Vertically centre each layer's column of nodes.
-        const y =
+        const x =
           count === 1
-            ? e.h / 2
-            : padY + (r / (count - 1)) * usableH;
-        nodePositions.push({ x, y, layer: li, row: r });
+            ? (netLeft + netRight) / 2
+            : netLeft + (r / (count - 1)) * spanW;
+        nodes.push({ x, y });
       }
+      return { y, nodes };
+    });
+
+    return {
+      neuronCx, neuronCy,
+      netLeft, netRight, stackTop, stackBot, rowGap,
+      layers,
+      colX,
+      w,
+    };
+  }
+
+  // --- the cortical neuron (amber), always full opacity --------------------
+  function drawNeuron(ctx, g) {
+    const cx = g.neuronCx;
+    const cy = g.neuronCy;
+    const r = 16;
+    neuron = { x: cx, y: cy, r };
+
+    ctx.save();
+    ctx.lineCap = 'round';
+
+    // Dendrite stubs radiating up/left (the input arbor that does the compute).
+    ctx.strokeStyle = pal.synapse;
+    ctx.globalAlpha = 0.85;
+    ctx.lineWidth = 2;
+    const dendrites = [
+      [-2.55, 30], [-2.05, 26], [-1.62, 30], [-1.18, 24], [-0.72, 27],
+    ];
+    for (const [ang, len] of dendrites) {
+      const ex = cx + Math.cos(ang) * len;
+      const ey = cy + Math.sin(ang) * len;
+      // slight fork at each dendrite tip
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(ex, ey);
+      ctx.lineTo(ex + Math.cos(ang - 0.5) * 8, ey + Math.sin(ang - 0.5) * 8);
+      ctx.moveTo(ex, ey);
+      ctx.lineTo(ex + Math.cos(ang + 0.5) * 8, ey + Math.sin(ang + 0.5) * 8);
+      ctx.stroke();
+      ctx.lineWidth = 2;
     }
-    // The seed node (layer 0) is where the single dot lives.
-    const seed = nodePositions.find((n) => n.layer === 0);
-    dotPos = { x: seed.x, y: seed.y, r: 14 };
+
+    // Axon: one line exiting right, toward the net it must be imitated by.
+    ctx.globalAlpha = 0.85;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx + r * 0.7, cy + 4);
+    ctx.lineTo(cx + r + 26, cy + 12);
+    ctx.stroke();
+
+    // Soma.
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = pal.synapse;
+    ctx.fill();
+    // inner core for a little depth (still one colour family)
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2);
+    ctx.fillStyle = pal.ink;
+    ctx.globalAlpha = 0.28;
+    ctx.fill();
+
+    ctx.restore();
+
+    // Label, anchored under the soma, ALWAYS full opacity (never fades).
+    drawText(ctx, 'title', 'one cortical neuron', cx, cy + r + 22, {
+      color: pal.synapse, align: 'center', baseline: 'middle',
+    });
   }
 
-  function nodeAt(i) {
-    return nodePositions[i];
-  }
-
-  // How "alive" a layer is at the current progress. Layers reveal left->right:
-  // layer li becomes fully present once progress passes its slice of [0,1].
-  function layerReveal(li, p) {
-    if (li === 0) return 1; // seed always present
-    const slices = LAYERS.length - 1;
-    const startP = (li - 1) / slices * 0.85; // begin a touch before its slot
-    const span = 0.4;
-    return clamp((p - startP) / span, 0, 1);
-  }
-
-  function draw(e) {
-    const { ctx, w, h } = e;
-    ctx.clearRect(0, 0, w, h);
-    layout(e);
-
-    const p = easeInOutCubic(clamp(progress, 0, 1));
-
-    // --- connections (phosphor) draw in as the network unfolds ---
+  // --- the imitation net (phosphor), ghost -> full ------------------------
+  function drawNet(ctx, g, alpha) {
+    // edges
     ctx.save();
     ctx.strokeStyle = pal.phosphor;
-    for (let li = 0; li < LAYERS.length - 1; li++) {
-      const rev = layerReveal(li + 1, p); // edges appear with their target layer
-      if (rev <= 0) continue;
-      const from = nodePositions.filter((n) => n.layer === li);
-      const to = nodePositions.filter((n) => n.layer === li + 1);
+    ctx.lineWidth = 1;
+    for (let li = 0; li < g.layers.length - 1; li++) {
+      const from = g.layers[li].nodes;
+      const to = g.layers[li + 1].nodes;
       for (const a of from) {
         for (const b of to) {
-          // Grow the line from a toward b, eased per target layer.
-          const bx = a.x + (b.x - a.x) * rev;
-          const by = a.y + (b.y - a.y) * rev;
-          ctx.globalAlpha = 0.35 * rev;
-          ctx.lineWidth = 1;
+          ctx.globalAlpha = alpha * 0.4;
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);
-          ctx.lineTo(bx, by);
+          ctx.lineTo(b.x, b.y);
           ctx.stroke();
         }
       }
     }
     ctx.restore();
 
-    // --- nodes ---
-    for (const n of nodePositions) {
-      if (n.layer === 0) {
-        // Seed node morphs from the big amber dot to a small phosphor node.
-        // Amber when folded (biology), cooling to phosphor as it unfolds.
-        const r = 14 - 8 * p;
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
-        // Cross-fade fill: amber dot underneath, phosphor node on top.
-        ctx.fillStyle = pal.synapse;
-        ctx.globalAlpha = 1 - p;
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
-        ctx.fillStyle = pal.phosphor;
-        ctx.globalAlpha = p;
-        ctx.fill();
-        ctx.globalAlpha = 1;
-        continue;
-      }
-      const rev = layerReveal(n.layer, p);
-      if (rev <= 0) continue;
-      ctx.globalAlpha = rev;
-      ctx.fillStyle = pal.phosphor;
-      ctx.beginPath();
-      ctx.arc(n.x, n.y, 6 * rev, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-    }
-
-    // --- labels (text always pairs the colour) ---
+    // nodes
     ctx.save();
-    ctx.font = '11px "Spline Sans Mono", monospace';
-    ctx.textBaseline = 'middle';
-
-    // Label near the seed dot.
-    ctx.globalAlpha = 1 - p;
-    ctx.fillStyle = pal.synapse;
-    ctx.textAlign = 'left';
-    ctx.fillText('1 neuron', dotPos.x + 22, dotPos.y);
-    ctx.globalAlpha = 1;
-
-    // Label for the unfolded network, fades in on the right.
-    ctx.globalAlpha = p;
     ctx.fillStyle = pal.phosphor;
-    ctx.textAlign = 'right';
-    ctx.fillText('≈ 5–8 layer network to mimic it', w - 18, 24);
-    ctx.globalAlpha = 1;
-
-    // Legend (bottom-left), always visible — colour + meaning.
-    ctx.textAlign = 'left';
-    ctx.fillStyle = pal.synapse;
-    ctx.fillText('● neuron (biology)', 16, h - 30);
-    ctx.fillStyle = pal.phosphor;
-    ctx.fillText('● network needed to imitate it (silicon)', 16, h - 14);
+    for (const layer of g.layers) {
+      for (const n of layer.nodes) {
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
     ctx.restore();
+  }
+
+  // --- depth annotation: makes "6 layers" countable, bound to the stack ----
+  function drawDepthScale(ctx, g, alpha) {
+    const x = g.netRight + 18;
+    ctx.save();
+    // A thin vertical spine spanning the stack, with a tick per layer.
+    ctx.strokeStyle = pal.boneDim;
+    ctx.globalAlpha = 0.35 + 0.4 * alpha;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, g.stackTop);
+    ctx.lineTo(x, g.stackBot);
+    ctx.stroke();
+    for (let li = 0; li < g.layers.length; li++) {
+      const y = g.layers[li].y;
+      ctx.beginPath();
+      ctx.moveTo(x - 3, y);
+      ctx.lineTo(x + 3, y);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Per-tick layer count, faint mono. "depth" reads down the column.
+    for (let li = 0; li < g.layers.length; li++) {
+      const y = g.layers[li].y;
+      drawText(ctx, 'data', String(li + 1), x + 9, y, {
+        color: pal.boneDim, align: 'left', baseline: 'middle',
+        size: 9.5, alpha: 0.5 + 0.45 * alpha,
+      });
+    }
+    drawText(ctx, 'label', 'layers deep', g.w - 8, g.stackBot + 16, {
+      color: pal.boneDim, align: 'right', baseline: 'middle',
+      size: 9, alpha: 0.45 + 0.4 * alpha,
+    });
+  }
+
+  function draw(e) {
+    const { ctx, w, h } = e;
+    ctx.clearRect(0, 0, w, h);
+    const g = geom(e);
+
+    // Under reduced motion we always present the full comparison.
+    const p = e.reduced ? 1 : easeInOutCubic(clamp(progress, 0, 1));
+    const netAlpha = lerp(GHOST, 1, p);
+
+    // Connector from neuron to net: "to imitate this →" (graphite, framing).
+    const cyConn = g.neuronCy;
+    const x0 = g.neuronCx + 16 + 30; // just past the axon
+    const x1 = g.netLeft - 12;
+    ctx.save();
+    ctx.strokeStyle = pal.graphite;
+    ctx.globalAlpha = 0.9;
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+    ctx.moveTo(x0, cyConn + 12);
+    ctx.lineTo(x1, cyConn);
+    ctx.stroke();
+    // arrowhead
+    ctx.beginPath();
+    ctx.moveTo(x1, cyConn);
+    ctx.lineTo(x1 - 7, cyConn - 4);
+    ctx.moveTo(x1, cyConn);
+    ctx.lineTo(x1 - 7, cyConn + 4);
+    ctx.stroke();
+    ctx.restore();
+    drawText(ctx, 'label', 'to imitate this', (x0 + x1) / 2, cyConn - 12, {
+      color: pal.boneDim, align: 'center', baseline: 'middle', size: 9,
+    });
+
+    // Right side: the imitation net (ghost at idle, full when unfolded).
+    drawNet(ctx, g, netAlpha);
+    drawDepthScale(ctx, g, p);
+
+    // Left side: the neuron, drawn last so it always reads clean on top.
+    drawNeuron(ctx, g);
+
+    // Net thesis label — display tier, anchored above the stack.
+    const netCx = (g.netLeft + g.netRight) / 2;
+    drawText(ctx, 'title', 'deep net to imitate it', netCx, g.stackTop - 18, {
+      color: pal.phosphor, align: 'center', baseline: 'middle',
+      alpha: 0.55 + 0.45 * p,
+    });
+
+    // Countable-depth citation, bound to the bottom of the stack (not floating
+    // in a corner). "6 layers deep" is literally what's drawn above it.
+    drawText(
+      ctx, 'data',
+      `${DEPTH} layers deep · needs 5–8 to match one neuron`,
+      netCx, h - 30,
+      { color: pal.boneDim, align: 'center', baseline: 'middle', size: 10 }
+    );
+    drawText(ctx, 'label', 'Beniaguev 2021', netCx, h - 15, {
+      color: pal.boneDim, align: 'center', baseline: 'middle', size: 8.5,
+      alpha: 0.7,
+    });
   }
 
   function update(dt) {
@@ -175,37 +294,38 @@ export default function mount(stage) {
     progress = clamp(progress + (dir * dt) / DUR, 0, 1);
     if ((dir > 0 && progress >= 1) || (dir < 0 && progress <= 0)) {
       animating = false;
+      if (fig) fig.stop(); // settle: go still once the morph completes
     }
   }
 
-  const fig = createFigure({ canvas, update, draw, autoplay: false });
+  fig = createFigure({ canvas, update, draw, autoplay: false });
   const env = fig.env;
 
-  // Toggle between dot and network. Reduced motion snaps; otherwise animates.
+  // Toggle ghost <-> full. Reduced motion already shows the full frame, so the
+  // toggle is a no-op visual there (the static frame is the resolved state).
   function toggle() {
     unfolded = !unfolded;
     foldBtn.textContent = unfolded ? 'fold ◀' : 'unfold ▶';
     foldBtn.setAttribute('aria-pressed', String(unfolded));
     if (env.reduced) {
-      progress = unfolded ? 1 : 0;
+      progress = 1; // full comparison is always the static truth
       animating = false;
       fig.render();
     } else {
       animating = true;
-      fig.start(); // resume the loop to run the morph (autoplay off otherwise)
+      fig.play(); // run the transient morph; update() calls stop() when settled
     }
   }
 
-  // --- click the dot itself ---
+  // --- click the neuron itself ---
   function pos(ev) {
     const rect = canvas.getBoundingClientRect();
     return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
   }
   canvas.addEventListener('pointerdown', (ev) => {
     const p = pos(ev);
-    // Hit test against the seed dot's current radius (point-in-circle).
-    const r = Math.max(dotPos.r, 16);
-    if (Math.hypot(p.x - dotPos.x, p.y - dotPos.y) <= r) {
+    const r = Math.max(neuron.r + 8, 22); // generous hit target around the soma
+    if (Math.hypot(p.x - neuron.x, p.y - neuron.y) <= r) {
       toggle();
     }
   });
@@ -224,13 +344,17 @@ export default function mount(stage) {
   const chipBio = document.createElement('span');
   chipBio.className = 'ctrl-chip';
   chipBio.style.setProperty('--c', pal.synapse);
-  chipBio.textContent = 'neuron (biology)';
+  chipBio.textContent = 'one cortical neuron (biology)';
   const chipSil = document.createElement('span');
   chipSil.className = 'ctrl-chip';
   chipSil.style.setProperty('--c', pal.phosphor);
-  chipSil.textContent = 'network needed to imitate it (silicon)';
+  chipSil.textContent = 'deep net to imitate it (silicon)';
   controls.append(chipBio, chipSil);
 
-  fig.start(); // paints the initial static dot (autoplay off until a toggle)
+  // Paint the initial scene: neuron + ghost net (or, under reduced motion, the
+  // full co-present comparison). With autoplay off, start() paints one static
+  // frame and does not loop; createFigure's own resize rAF is the authoritative
+  // first paint once the canvas has been sized.
+  fig.start();
   return fig;
 }

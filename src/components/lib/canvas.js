@@ -68,6 +68,7 @@ export function createFigure(o) {
   let running = false;
   let visible = true;
   let didSetup = false;
+  let destroyed = false;
   let ratio = dpr(maxDpr);
 
   function resize() {
@@ -110,6 +111,25 @@ export function createFigure(o) {
       return;
     }
     if (!visible) return;
+    running = true;
+    last = 0;
+    raf = requestAnimationFrame(frame);
+  }
+
+  /**
+   * Force the rAF loop to run regardless of `autoplay`. This is the affordance
+   * for figures that are otherwise still but animate a transient on demand
+   * (a click-driven morph, a slider release). `start()` deliberately refuses to
+   * loop when autoplay is off; `play()` is the explicit "run it now" override.
+   * Reduced motion still never loops — it paints one honest frame instead.
+   * The figure is responsible for calling `stop()` when its transient settles.
+   */
+  function play() {
+    if (running) return;
+    if (env.reduced) {
+      if (draw) draw(env);
+      return;
+    }
     running = true;
     last = 0;
     raf = requestAnimationFrame(frame);
@@ -161,14 +181,25 @@ export function createFigure(o) {
   // Initial size + paint on next frame so layout has settled.
   requestAnimationFrame(resize);
 
+  // FOUT guard: canvas text measured before the web fonts load uses the system
+  // fallback and never reflows. When the real fonts are ready, repaint once so
+  // labels land in the right font/metrics (matters most for static frames that
+  // never loop). Guard against a figure destroyed before the promise settles.
+  if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => {
+      if (!destroyed && draw) draw(env);
+    });
+  }
+
   function destroy() {
+    destroyed = true;
     stop();
     io.disconnect();
     ro.disconnect();
     if (mq.removeEventListener) mq.removeEventListener('change', onMq);
   }
 
-  return { start, stop, step, render, destroy, env, resize };
+  return { start, play, stop, step, render, destroy, env, resize };
 }
 
 /** Small helper: clamp a number to [a, b]. */
@@ -209,9 +240,63 @@ export function palette() {
   return {
     ink: token('--ink', '#0b1418'),
     bone: token('--bone', '#ece4d6'),
+    boneDim: token('--bone-dim', '#b9b09f'),
     phosphor: token('--phosphor', '#5bd6c0'),
     synapse: token('--synapse', '#e2864b'),
     graphite: token('--graphite', '#38474c'),
     oversight: token('--oversight', '#8e83d6'),
   };
+}
+
+/* =====================================================================
+   Shared canvas type system.
+   Three tiers so every figure converges on one treatment instead of
+   ad-hoc font strings. Only the weights actually loaded by the layout are
+   used (Space Grotesk 400-700, Spline Sans Mono 400/500 — mono 600 is NOT
+   loaded, so we never ask for it: that "bold mono" only renders as a
+   browser-synthesised faux-bold).
+
+     title : the figure's voice / thesis line   — display grotesque, 600
+     label : section + axis labels (the chrome)  — mono 500, UPPERCASE, tracked
+     data  : live readouts / values next to marks — mono 500, as-is
+   ===================================================================== */
+export const TYPE = {
+  title: { family: "'Space Grotesk', system-ui, sans-serif", size: 13, weight: 600, tracking: 0, upper: false },
+  label: { family: "'Spline Sans Mono', ui-monospace, monospace", size: 10.5, weight: 500, tracking: 0.08, upper: true },
+  data:  { family: "'Spline Sans Mono', ui-monospace, monospace", size: 11, weight: 500, tracking: 0, upper: false },
+};
+
+/** Build a canvas `font` string for a tier (for ctx.font / measureText). */
+export function fontFor(tier, size) {
+  const t = TYPE[tier] || TYPE.data;
+  return `${t.weight} ${size || t.size}px ${t.family}`;
+}
+
+/**
+ * Draw a label in one of the three tiers, handling font, tracking, casing,
+ * colour, alignment and alpha — and always restoring canvas state (so the
+ * letterSpacing never leaks into the next draw call).
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {'title'|'label'|'data'} tier
+ * @param {string} text
+ * @param {number} x @param {number} y
+ * @param {object} [o]  {color, align, baseline, alpha, size, weight, tracking, upper}
+ */
+export function drawText(ctx, tier, text, x, y, o = {}) {
+  const t = TYPE[tier] || TYPE.data;
+  const size = o.size != null ? o.size : t.size;
+  const weight = o.weight != null ? o.weight : t.weight;
+  const trackEm = o.tracking != null ? o.tracking : t.tracking;
+  const upper = o.upper != null ? o.upper : t.upper;
+  ctx.save();
+  ctx.font = `${weight} ${size}px ${t.family}`;
+  // letterSpacing is a modern canvas property; restore() resets it.
+  if ('letterSpacing' in ctx) ctx.letterSpacing = `${(trackEm * size).toFixed(2)}px`;
+  if (o.align) ctx.textAlign = o.align;
+  if (o.baseline) ctx.textBaseline = o.baseline;
+  if (o.alpha != null) ctx.globalAlpha = o.alpha;
+  ctx.fillStyle = o.color || '#ece4d6';
+  ctx.fillText(upper ? String(text).toUpperCase() : String(text), x, y);
+  ctx.restore();
 }

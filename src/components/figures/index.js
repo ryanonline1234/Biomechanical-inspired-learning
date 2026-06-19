@@ -9,6 +9,7 @@ const registry = {
   'living-organism': () => import('./LivingOrganism.js'),
   'phase-flow': () => import('./PhaseFlow.js'),
   'liquid-neuron': () => import('./LiquidNeuron.js'),
+  'mamba-selective': () => import('./MambaSelective.js'),
   'neuromod-plasticity': () => import('./NeuromodPlasticity.js'),
   'stability-plasticity': () => import('./StabilityPlasticity.js'),
   'generate-verify': () => import('./GenerateVerify.js'),

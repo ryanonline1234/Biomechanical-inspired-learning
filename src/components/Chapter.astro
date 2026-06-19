@@ -55,7 +55,7 @@ const leanClass = chapter.lean ? `lean-${chapter.lean}` : '';
         {chapter.figure && (
           <div class="chapter__viz">
             <div class="chapter__viz-sticky">
-              <Figure figure={chapter.figure} />
+              <Figure figure={chapter.figure} variant={chapter.figureVariant} />
             </div>
           </div>
         )}
@@ -68,6 +68,11 @@ const leanClass = chapter.lean ? `lean-${chapter.lean}` : '';
               <p class="sidenote__label spec">{chapter.sideNote.label}</p>
               <p class="sidenote__body" set:html={chapter.sideNote.body} />
             </aside>
+          )}
+          {chapter.extraFigure && (
+            <div class="chapter__extra-fig">
+              <Figure figure={chapter.extraFigure} ratio="5 / 2" />
+            </div>
           )}
         </div>
       </div>
@@ -140,6 +145,11 @@ const leanClass = chapter.lean ? `lean-${chapter.lean}` : '';
   }
   .chapter__prose {
     padding-top: var(--space-2);
+  }
+  /* A secondary, in-flow figure embedded in the prose column (e.g. the Mamba
+     selectivity strip beside the liquid-neuron sticky figure). */
+  .chapter__extra-fig {
+    margin-top: var(--space-4);
   }
 
   /* Put the figure on the left, prose on the right, on desktop. */

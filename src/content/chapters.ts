@@ -45,6 +45,12 @@ export interface Chapter {
   /** the world this chapter leans toward, for the accent seam */
   lean?: 'silicon' | 'bio' | 'oversight' | 'neutral';
   figure?: Figure;
+  /** instance variant handed to the main figure module via data-variant
+      (used where one figure module is reused in two places, e.g. the
+      living-organism hero vs its harder-working ch4 'crux' instance) */
+  figureVariant?: string;
+  /** a secondary figure rendered inline in the prose column */
+  extraFigure?: Figure;
   sideNote?: SideNote;
   subBlocks?: SubBlock[];
 }
@@ -103,6 +109,14 @@ export const chapters: Chapter[] = [
       body:
         'The trained weights do not rewrite themselves at inference. Nothing in a liquid network edits its own parameters as it runs. What is input-dependent is the *dynamics* — the time constants, the decay rates — not the weights. “The network rewires itself on the fly” is the single most common misstatement of this work, and it is wrong.',
     },
+    extraFigure: {
+      id: 'mamba-selective',
+      caption:
+        'A token stream flowing left to right. At each step the input itself sets a gate: high-salience tokens are kept (written into state), low-salience ones decay away. The selection is per-token and input-dependent — the liquid idea in hardware-friendly clothes.',
+      description:
+        'A horizontal sequence of tokens moves through a single recurrent state cell. For each token, an input-dependent gate value (drawn from the token’s own salience) decides how much is written into the running state versus how much of the old state decays. Salient tokens visibly latch into the state and persist; filler tokens are let through and fade. The result is a state that remembers a sparse, input-chosen subset — the selective state-space (Mamba) mechanism, contrasted with a fixed gate that treats every token identically.',
+      spec: 'fig.02b // selective state space',
+    },
     figure: {
       id: 'liquid-neuron',
       caption:
@@ -145,6 +159,7 @@ export const chapters: Chapter[] = [
       'This is where the running test of this essay earns its keep: *is the magic in the unit, or in the interaction?* Here the answer is unambiguous. Self-repair is not a property any cell has. It exists only *because* there are many cells running the same rule at once. You could not relocate it into one richer, cleverer unit no matter how much you enlarged that unit, because the capability is not a thing a unit can hold. It is irreducibly collective.',
       'Keep that distinction. Much of what looks like intelligence in adaptive systems lives in the interaction, and the bitter lesson — Sutton’s 2019 observation that structured, hand-designed cleverness keeps losing to simple methods given more compute — bites hardest exactly when people try to engineer the magic into the unit instead of letting it emerge.',
     ],
+    figureVariant: 'crux',
     figure: {
       id: 'living-organism',
       caption:

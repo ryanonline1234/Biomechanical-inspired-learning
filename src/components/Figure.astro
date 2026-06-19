@@ -14,8 +14,11 @@ interface Props {
   figure: Figure;
   /** aspect-ratio for the stage; tweak per figure where useful */
   ratio?: string;
+  /** optional instance variant (e.g. hero vs crux) for figures reused in
+      more than one place; surfaced to the module as stage.dataset.variant */
+  variant?: string;
 }
-const { figure, ratio = '16 / 10' } = Astro.props;
+const { figure, ratio = '16 / 10', variant } = Astro.props;
 ---
 
 <figure class="figure" id={`fig-${figure.id}-${Math.random().toString(36).slice(2, 7)}`}>
@@ -24,6 +27,7 @@ const { figure, ratio = '16 / 10' } = Astro.props;
   <div
     class="figure__stage"
     data-figure={figure.id}
+    data-variant={variant}
     style={`--fig-ratio: ${ratio};`}
   >
     <div class="figure__surface">

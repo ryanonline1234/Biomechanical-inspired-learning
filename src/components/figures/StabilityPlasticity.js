@@ -2,184 +2,363 @@
    StabilityPlasticity — chapter 5.1 (the stability–plasticity dilemma).
 
    One horizontal slider sweeps from "rigid (can't learn)" on the left to
-   "chaotic (forgets everything)" on the right. Two derived meters trade off:
-     - LEARNING  (plasticity): ~0 when rigid, rises toward chaos
-     - RETENTION (stability) : high when rigid, collapses toward chaos
-   A narrow "sweet spot" band near the middle is the only place where BOTH
-   stay reasonably high. Slider-driven, so no autoplay is needed; a faint
-   shimmer plays only when motion is allowed.
+   "chaotic (forgets everything)" on the right. Two competing abilities are
+   plotted as CURVES across the whole slider range:
+     - LEARNING  (plasticity): rises 0 → 1 left-to-right  (synapse / warm)
+     - RETENTION (stability) : its mirror, 1 → 0          (phosphor / cool)
+   VIABILITY = min(LEARNING, RETENTION). The region under that min is the
+   "viable lens": the only slice where BOTH abilities stay high. The band
+   edges are DERIVED from where min(L,R) crosses a threshold — never
+   hardcoded — so the painted lens and the math can never disagree.
+
+   Slider-driven: re-renders on input only. No autoplay, no shimmer.
    ===================================================================== */
 
-import { createFigure, palette, clamp, lerp, hexToRgb, rgba } from '../lib/canvas.js';
+import {
+  createFigure,
+  palette,
+  clamp,
+  hexToRgb,
+  rgba,
+  drawText,
+} from '../lib/canvas.js';
 
-// The viable band, in normalized slider position [0,1].
-const SWEET_LO = 0.42;
-const SWEET_HI = 0.58;
+// Hermite smoothstep over an explicit window [e0, e1].
+const smoothstep = (e0, e1, x) => {
+  const t = clamp((x - e0) / (e1 - e0), 0, 1);
+  return t * t * (3 - 2 * t);
+};
 
-// Smooth easing so the meters feel organic rather than linear.
-const smooth = (t) => t * t * (3 - 2 * t);
+// The transition window. Tuned (knee centred ~0.42, half-width ~0.26) so that
+// at the centre both abilities sit ~72% AND the min-overlap lens is genuinely
+// NARROW — the knife-edge the prose promises. See the band derivation below.
+const KNEE_LO = 0.16;
+const KNEE_HI = 0.68;
+
+// Viability threshold. The "viable" band is exactly where min(L,R) >= this.
+const VIABLE_TH = 0.6;
+
+const learningAt = (p) => smoothstep(KNEE_LO, KNEE_HI, p);
+const retentionAt = (p) => smoothstep(KNEE_LO, KNEE_HI, 1 - p);
+const viabilityAt = (p) => Math.min(learningAt(p), retentionAt(p));
+
+// Derive the viable band edges ONCE from the threshold crossing, so the band
+// can never drift from the math. (Symmetric, but we scan rather than assume.)
+function deriveBand() {
+  let lo = null;
+  let hi = null;
+  const N = 2000;
+  for (let i = 0; i <= N; i++) {
+    const p = i / N;
+    if (viabilityAt(p) >= VIABLE_TH) {
+      if (lo === null) lo = p;
+      hi = p;
+    }
+  }
+  // Fallback (should not happen with the tuned window): collapse to centre.
+  if (lo === null) return { lo: 0.5, hi: 0.5 };
+  return { lo, hi };
+}
+const BAND = deriveBand();
+const inBand = (p) => p >= BAND.lo && p <= BAND.hi;
 
 export default function mount(stage) {
   const canvas = stage.querySelector('canvas');
   const controls = stage.querySelector('[data-controls]');
   const pal = palette();
-  const phoRGB = hexToRgb(pal.phosphor); // silicon / retention-ish cool
-  const synRGB = hexToRgb(pal.synapse);  // biological / learning warm
+  const synRGB = hexToRgb(pal.synapse); // biological / learning  (warm)
+  const phoRGB = hexToRgb(pal.phosphor); // silicon / retention   (cool)
 
   let pos = 0.5; // normalized slider position [0,1]
-
-  // Derive the two competing abilities from the slider position.
-  // learning rises with position (smoothed); retention falls with a sharper
-  // knee so it collapses quickly once we pass the middle.
-  function meters(p) {
-    const learning = smooth(clamp(p, 0, 1));
-    // retention: high at left, sharp falloff past centre (cubic-ish knee)
-    const r = clamp(1 - p, 0, 1);
-    const retention = smooth(r) * (0.35 + 0.65 * r * r);
-    return { learning, retention };
-  }
-
-  function inSweet(p) {
-    return p >= SWEET_LO && p <= SWEET_HI;
-  }
 
   function draw(e) {
     const { ctx, w, h } = e;
     ctx.clearRect(0, 0, w, h);
 
-    const padX = 36;
-    const trackY = Math.round(h * 0.30);
-    const trackW = w - padX * 2;
-    const x0 = padX;
+    // ---- plot geometry: curves live in the upper region of the stage ----
+    const padX = 40;
+    const plotX = padX;
+    const plotW = w - padX * 2;
+    const plotTop = 30;
+    const plotBottom = Math.round(h * 0.62);
+    const plotH = plotBottom - plotTop;
 
-    // faint shimmer only when motion allowed — a subtle traveling glint on
-    // the sweet-spot band; purely decorative and skipped under reduced motion.
-    const shimmer = e.reduced ? 0 : 0.5 + 0.5 * Math.sin(e.t * 2.2);
+    // value (0..1) -> y. 1 at top, 0 at baseline.
+    const vy = (v) => plotBottom - clamp(v, 0, 1) * plotH;
+    // position (0..1) -> x.
+    const px = (p) => plotX + clamp(p, 0, 1) * plotW;
 
-    // --- the track ---
+    // ---- thesis line (title tier) ----
+    drawText(
+      ctx,
+      'title',
+      'Only a narrow band keeps both high',
+      plotX,
+      18,
+      { baseline: 'alphabetic' }
+    );
+
+    // ---- baseline grid: 0 / 50 / 100% ----
     ctx.save();
-    ctx.strokeStyle = pal.graphite;
-    ctx.lineWidth = 4;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(x0, trackY);
-    ctx.lineTo(x0 + trackW, trackY);
-    ctx.stroke();
-
-    // sweet-spot band highlight
-    const sx = x0 + SWEET_LO * trackW;
-    const sw = (SWEET_HI - SWEET_LO) * trackW;
-    ctx.fillStyle = rgba(phoRGB, 0.14 + shimmer * 0.06);
-    ctx.fillRect(sx, trackY - 16, sw, 32);
-    ctx.strokeStyle = rgba(phoRGB, 0.7);
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(sx, trackY - 16, sw, 32);
+    ctx.strokeStyle = rgba(hexToRgb(pal.graphite), 0.55);
+    ctx.lineWidth = 1;
+    for (const gv of [0, 0.5, 1]) {
+      const gy = vy(gv);
+      ctx.beginPath();
+      ctx.moveTo(plotX, gy);
+      ctx.lineTo(plotX + plotW, gy);
+      ctx.stroke();
+      drawText(ctx, 'label', `${Math.round(gv * 100)}`, plotX - 8, gy, {
+        color: pal.boneDim,
+        align: 'right',
+        baseline: 'middle',
+        size: 9.5,
+      });
+    }
     ctx.restore();
 
-    // band label
-    ctx.font = '11px "Spline Sans Mono", monospace';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = pal.phosphor;
-    ctx.fillText('sweet spot · viable', sx + sw / 2, trackY - 24);
-
-    // end labels
-    ctx.fillStyle = pal.bone;
-    ctx.textAlign = 'left';
-    ctx.fillText('rigid', x0, trackY + 34);
-    ctx.font = '10px "Spline Sans Mono", monospace';
-    ctx.fillStyle = pal.graphite;
-    ctx.fillText("can't learn", x0, trackY + 48);
-    ctx.font = '11px "Spline Sans Mono", monospace';
-    ctx.fillStyle = pal.bone;
-    ctx.textAlign = 'right';
-    ctx.fillText('chaotic', x0 + trackW, trackY + 34);
-    ctx.font = '10px "Spline Sans Mono", monospace';
-    ctx.fillStyle = pal.graphite;
-    ctx.fillText('forgets everything', x0 + trackW, trackY + 48);
-
-    // --- moving indicator ---
-    const ix = x0 + pos * trackW;
+    // ---- shaded viable lens: the area under min(L,R) ----
+    // This shaded region IS the viable zone; its narrowness is self-evident.
     ctx.save();
-    ctx.strokeStyle = pal.bone;
-    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(ix, trackY - 18);
-    ctx.lineTo(ix, trackY + 18);
-    ctx.stroke();
-    ctx.fillStyle = pal.bone;
-    ctx.beginPath();
-    ctx.arc(ix, trackY, 6, 0, Math.PI * 2);
+    ctx.moveTo(plotX, plotBottom);
+    const STEPS = 160;
+    for (let i = 0; i <= STEPS; i++) {
+      const p = i / STEPS;
+      ctx.lineTo(px(p), vy(viabilityAt(p)));
+    }
+    ctx.lineTo(plotX + plotW, plotBottom);
+    ctx.closePath();
+    ctx.fillStyle = rgba(phoRGB, 0.16);
     ctx.fill();
     ctx.restore();
 
-    // --- the two bar meters + note, anchored from the BOTTOM so the stack
-    //     always fits, even on short canvases (the controls bar overlays the
-    //     very bottom, so leave a margin for it). ---
-    const { learning, retention } = meters(pos);
-    const barX = padX;
-    const barW = w - padX * 2;
-    const barH = 16;
-    const noteY = h - 10;
-    const rowGap = Math.min(46, Math.max(34, (h - trackY - 70) / 2));
-    const retY = noteY - 22;
-    const baseY = retY - rowGap; // LEARNING row
+    // ---- the two ability curves ----
+    const plotCurve = (fn, rgb, lw) => {
+      ctx.save();
+      ctx.strokeStyle = rgba(rgb, 0.95);
+      ctx.lineWidth = lw;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      for (let i = 0; i <= STEPS; i++) {
+        const p = i / STEPS;
+        const x = px(p);
+        const y = vy(fn(p));
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    };
+    plotCurve(retentionAt, phoRGB, 2.2); // retention (cool) under
+    plotCurve(learningAt, synRGB, 2.2); // learning (warm) over
 
-    drawMeter(ctx, barX, baseY, barW, barH, 'LEARNING', learning, synRGB, pal);
-    drawMeter(ctx, barX, retY, barW, barH, 'RETENTION', retention, phoRGB, pal);
+    // ---- viable-band edge ticks ("edge of viability") ----
+    ctx.save();
+    ctx.strokeStyle = rgba(phoRGB, 0.55);
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    for (const edge of [BAND.lo, BAND.hi]) {
+      const ex = px(edge);
+      ctx.beginPath();
+      ctx.moveTo(ex, plotTop);
+      ctx.lineTo(ex, plotBottom);
+      ctx.stroke();
+    }
+    ctx.restore();
+    // One small centred tag under the band's midline — the dashed ticks and the
+    // shaded lens already carry the meaning, so no per-edge "edge of viability".
+    drawText(
+      ctx,
+      'label',
+      'viable band',
+      px((BAND.lo + BAND.hi) / 2),
+      vy(0) - 6,
+      { color: pal.boneDim, align: 'center', baseline: 'alphabetic', size: 9 }
+    );
 
-    // --- both-viable note ---
-    ctx.font = '11px "Spline Sans Mono", monospace';
-    ctx.textAlign = 'center';
-    if (inSweet(pos)) {
-      ctx.fillStyle = pal.phosphor;
-      ctx.fillText('● both viable — learns without forgetting', w / 2, noteY);
-    } else if (pos < SWEET_LO) {
-      ctx.fillStyle = pal.graphite;
-      ctx.fillText('too rigid — retains but cannot adapt', w / 2, noteY);
+    // ---- vertical readout line at the slider position ----
+    const learning = learningAt(pos);
+    const retention = retentionAt(pos);
+    const rx = px(pos);
+
+    ctx.save();
+    ctx.strokeStyle = rgba(hexToRgb(pal.bone), 0.7);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(rx, plotTop);
+    ctx.lineTo(rx, plotBottom);
+    ctx.stroke();
+    ctx.restore();
+
+    // labelled dot on each curve where the readout line crosses it.
+    const drawDot = (val, rgb, labelColor, side) => {
+      const dy = vy(val);
+      ctx.save();
+      ctx.fillStyle = rgba(rgb, 1);
+      ctx.beginPath();
+      ctx.arc(rx, dy, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = rgba(hexToRgb(pal.ink), 0.9);
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+      // value label, offset to the side that keeps it on-canvas.
+      const near = pos > 0.78;
+      const align = near ? 'right' : 'left';
+      const ox = near ? -10 : 10;
+      drawText(ctx, 'data', `${Math.round(val * 100)}%`, rx + ox, dy + side, {
+        color: labelColor,
+        align,
+        baseline: 'middle',
+        size: 11.5,
+      });
+    };
+    // place the two value labels so they don't collide when curves are close.
+    const learnAbove = learning >= retention;
+    drawDot(learning, synRGB, pal.synapse, learnAbove ? -10 : 12);
+    drawDot(retention, phoRGB, pal.phosphor, learnAbove ? 12 : -10);
+
+    // axis end labels under the plot.
+    drawText(ctx, 'label', 'rigid', plotX, plotBottom + 16, {
+      color: pal.bone,
+      align: 'left',
+      baseline: 'alphabetic',
+    });
+    drawText(ctx, 'label', "can't learn", plotX, plotBottom + 30, {
+      color: pal.boneDim,
+      align: 'left',
+      baseline: 'alphabetic',
+      size: 9,
+    });
+    drawText(ctx, 'label', 'chaotic', plotX + plotW, plotBottom + 16, {
+      color: pal.bone,
+      align: 'right',
+      baseline: 'alphabetic',
+    });
+    drawText(ctx, 'label', 'forgets everything', plotX + plotW, plotBottom + 30, {
+      color: pal.boneDim,
+      align: 'right',
+      baseline: 'alphabetic',
+      size: 9,
+    });
+
+    // Curve-identity labels, set INSIDE the plot near each curve's high end but
+    // dropped well below the 100% line so they clear the title row and ticks.
+    // LEARNING peaks on the right; RETENTION peaks on the left.
+    drawText(ctx, 'label', 'LEARNING', plotX + plotW, vy(0.78), {
+      color: pal.synapse,
+      align: 'right',
+      baseline: 'middle',
+      size: 9.5,
+    });
+    drawText(ctx, 'label', 'RETENTION', plotX, vy(0.78), {
+      color: pal.phosphor,
+      align: 'left',
+      baseline: 'middle',
+      size: 9.5,
+    });
+
+    // ---- MoE motif + verdict, in the lower region ----
+    const viable = inBand(pos);
+    const regime = viable ? 'viable' : pos < BAND.lo ? 'rigid' : 'chaotic';
+    const motifY = plotBottom + 56;
+    drawMoE(ctx, w, motifY, regime, pal, synRGB);
+
+    // verdict note: phosphor + bullet when viable, dim graphite otherwise.
+    const noteY = h - 12;
+    if (viable) {
+      drawText(
+        ctx,
+        'title',
+        '● viable — learns without forgetting',
+        w / 2,
+        noteY,
+        { color: pal.phosphor, align: 'center', baseline: 'alphabetic' }
+      );
+    } else if (regime === 'rigid') {
+      drawText(
+        ctx,
+        'title',
+        'too rigid — retains but cannot adapt',
+        w / 2,
+        noteY,
+        { color: pal.boneDim, align: 'center', baseline: 'alphabetic' }
+      );
     } else {
-      ctx.fillStyle = pal.graphite;
-      ctx.fillText('too plastic — adapts but forgets', w / 2, noteY);
+      drawText(
+        ctx,
+        'title',
+        'too plastic — adapts but forgets',
+        w / 2,
+        noteY,
+        { color: pal.boneDim, align: 'center', baseline: 'alphabetic' }
+      );
     }
   }
 
-  // A labeled horizontal bar meter with a numeric percentage. Text label is
-  // always present so the figure never relies on color alone.
-  function drawMeter(ctx, x, y, w, h, label, value, rgb, pal) {
+  // The chapter's MoE intuition, as a small STATIC motif: a fixed dark "stable
+  // core" block plus a row of expert dots. Which experts are lit encodes the
+  // regime — viable lights a few, rigid lights none, chaotic lights all (the
+  // "everything churns" failure). Lit/dim is the payload; no animation.
+  function drawMoE(ctx, w, cy, regime, pal, synRGB) {
+    const coreW = 26;
+    const coreH = 16;
+    const gap = 14;
+    const dotR = 4;
+    const nExperts = 6;
+    const dotGap = 16;
+    const totalW = coreW + gap + (nExperts - 1) * dotGap;
+    const startX = (w - totalW) / 2;
+
+    // stable core (fixed dark block) — always present, never changes.
     ctx.save();
-    ctx.font = '11px "Spline Sans Mono", monospace';
-    ctx.textAlign = 'left';
-    ctx.fillStyle = pal.bone;
-    ctx.fillText(label, x, y - 6);
-
-    // track
-    ctx.fillStyle = rgba(hexToRgbLocal(pal.graphite), 0.35);
-    ctx.fillRect(x, y, w, h);
-    // fill
-    ctx.fillStyle = rgba(rgb, 0.85);
-    ctx.fillRect(x, y, w * clamp(value, 0, 1), h);
-    // outline
-    ctx.strokeStyle = pal.graphite;
+    ctx.fillStyle = rgba(hexToRgb(pal.graphite), 0.9);
+    ctx.fillRect(startX, cy - coreH / 2, coreW, coreH);
+    ctx.strokeStyle = rgba(hexToRgb(pal.bone), 0.4);
     ctx.lineWidth = 1;
-    ctx.strokeRect(x, y, w, h);
-
-    // percentage readout
-    ctx.textAlign = 'right';
-    ctx.fillStyle = pal.bone;
-    ctx.fillText(`${Math.round(value * 100)}%`, x + w, y - 6);
+    ctx.strokeRect(startX, cy - coreH / 2, coreW, coreH);
     ctx.restore();
+
+    // which experts are lit, per regime.
+    // viable: a sparse few (2). rigid: none. chaotic: all (churn).
+    let lit;
+    if (regime === 'viable') lit = [1, 3];
+    else if (regime === 'rigid') lit = [];
+    else lit = [0, 1, 2, 3, 4, 5];
+
+    const dotX0 = startX + coreW + gap;
+    for (let i = 0; i < nExperts; i++) {
+      const dx = dotX0 + i * dotGap;
+      const on = lit.includes(i);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(dx, cy, dotR, 0, Math.PI * 2);
+      ctx.fillStyle = on
+        ? rgba(synRGB, 0.95)
+        : rgba(hexToRgb(pal.graphite), 0.6);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    const expLabel =
+      regime === 'rigid'
+        ? 'experts frozen'
+        : regime === 'chaotic'
+        ? 'all experts churn'
+        : 'few experts adapt';
+    // One combined caption centred under the whole motif (stable core + experts),
+    // so the two halves can never run together at the motif's narrow width.
+    drawText(ctx, 'label', 'stable core · ' + expLabel, w / 2, cy + coreH / 2 + 13, {
+      color: regime === 'viable' ? pal.synapse : pal.boneDim,
+      align: 'center',
+      baseline: 'alphabetic',
+      size: 8.5,
+    });
   }
 
-  // local helper: graphite token is a hex string; reuse hexToRgb for rgba().
-  function hexToRgbLocal(hex) {
-    return hexToRgb(hex);
-  }
-
-  // slider-driven: a gentle shimmer is the only animated content. update is a
-  // no-op for state (env.t still advances), so the draw shimmer animates.
-  function update() {}
-
-  const fig = createFigure({ canvas, update, draw });
-  const env = fig.env;
+  // Slider-driven only: no state to advance and no looping animation.
+  const fig = createFigure({ canvas, draw, autoplay: false });
 
   // --- the dilemma slider ---
   const label = document.createElement('span');
@@ -202,9 +381,12 @@ export default function mount(stage) {
   controls.append(slider);
 
   function readoutText() {
-    const { learning, retention } = meters(pos);
-    const tag = inSweet(pos) ? 'viable' : pos < SWEET_LO ? 'rigid' : 'chaotic';
-    return `L ${Math.round(learning * 100)}% · R ${Math.round(retention * 100)}% · ${tag}`;
+    const learning = learningAt(pos);
+    const retention = retentionAt(pos);
+    const tag = inBand(pos) ? 'viable' : pos < BAND.lo ? 'rigid' : 'chaotic';
+    return `learn ${Math.round(learning * 100)}% · retain ${Math.round(
+      retention * 100
+    )}% · ${tag}`;
   }
 
   const readout = document.createElement('span');
@@ -212,7 +394,7 @@ export default function mount(stage) {
   readout.textContent = readoutText();
   controls.append(readout);
 
-  // legend chips — text labels paired with the meaningful colors
+  // legend chips — text labels paired with the meaningful colours.
   const legend = document.createElement('div');
   const chipL = document.createElement('span');
   chipL.className = 'ctrl-chip';
@@ -225,6 +407,6 @@ export default function mount(stage) {
   legend.append(chipL, chipR);
   controls.append(legend);
 
-  fig.start();
+  fig.start(); // autoplay:false -> paints one static frame (the p=0.5 lens).
   return fig;
 }
