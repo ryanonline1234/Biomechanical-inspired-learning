@@ -169,7 +169,9 @@ export default function mount(stage) {
     const topReserve = 26; // room for the status line
     const gw = e.w - pad * 2;
     const gh = e.h - pad * 2 - topReserve;
-    const cs = Math.min(gw / COLS, gh / ROWS);
+    // Clamp to 0: before the first resize the env is 0x0, which would make the
+    // cell size (and every derived radius) negative — and arc() throws on that.
+    const cs = Math.max(0, Math.min(gw / COLS, gh / ROWS));
     const ox = pad + (gw - cs * COLS) / 2;
     const oy = pad + topReserve + (gh - cs * ROWS) / 2;
     return { cs, ox, oy };
@@ -178,6 +180,9 @@ export default function mount(stage) {
   function draw(e) {
     const { ctx, w, h } = e;
     ctx.clearRect(0, 0, w, h);
+    // Nothing to lay out until the stage has real dimensions; the rAF resize
+    // repaints once it does. Guards the mount-time render (env is 0x0 then).
+    if (w < 60 || h < 60) return;
     const { cs, ox, oy } = cellGeom(e);
 
     // cells
