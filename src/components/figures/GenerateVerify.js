@@ -230,7 +230,7 @@ export default function mount(stage) {
     markCell(ctx, ox, oy, cs, goal, pal.oversight, 'G');
 
     // --- status line (monospace, top) ---
-    ctx.font = '12px "Spline Sans Mono", monospace';
+    ctx.font = '11px "Spline Sans Mono", monospace';
     ctx.textAlign = 'left';
     let txt = '';
     if (status === 'generating') {
@@ -245,7 +245,7 @@ export default function mount(stage) {
       txt = `verified (cheap · one pass) → ${verdict}`;
     } else {
       ctx.fillStyle = pal.bone;
-      txt = 'oversight: generation is hard · verification is cheap';
+      txt = 'generation: hard · verification: cheap';
     }
     ctx.fillText(txt, 14, 18);
 

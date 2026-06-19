@@ -112,21 +112,24 @@ export default function mount(stage) {
     ctx.fill();
     ctx.restore();
 
-    // --- the two bar meters ---
+    // --- the two bar meters + note, anchored from the BOTTOM so the stack
+    //     always fits, even on short canvases (the controls bar overlays the
+    //     very bottom, so leave a margin for it). ---
     const { learning, retention } = meters(pos);
     const barX = padX;
     const barW = w - padX * 2;
-    const barH = 18;
-    const gap = 52;
-    const baseY = Math.round(h * 0.56);
+    const barH = 16;
+    const noteY = h - 10;
+    const rowGap = Math.min(46, Math.max(34, (h - trackY - 70) / 2));
+    const retY = noteY - 22;
+    const baseY = retY - rowGap; // LEARNING row
 
     drawMeter(ctx, barX, baseY, barW, barH, 'LEARNING', learning, synRGB, pal);
-    drawMeter(ctx, barX, baseY + gap, barW, barH, 'RETENTION', retention, phoRGB, pal);
+    drawMeter(ctx, barX, retY, barW, barH, 'RETENTION', retention, phoRGB, pal);
 
     // --- both-viable note ---
-    ctx.font = '12px "Spline Sans Mono", monospace';
+    ctx.font = '11px "Spline Sans Mono", monospace';
     ctx.textAlign = 'center';
-    const noteY = baseY + gap * 2 + 6;
     if (inSweet(pos)) {
       ctx.fillStyle = pal.phosphor;
       ctx.fillText('● both viable — learns without forgetting', w / 2, noteY);

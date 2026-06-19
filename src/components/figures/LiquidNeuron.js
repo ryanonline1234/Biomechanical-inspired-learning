@@ -222,7 +222,8 @@ export default function mount(stage) {
 
     // --- top label: weights never change, only dynamics flex ---
     ctx.fillStyle = pal.phosphor;
-    ctx.fillText('weights FIXED — only the time constant flexes', p.x, p.y - 6);
+    ctx.textAlign = 'left';
+    ctx.fillText('weights FIXED — only the dynamics flex', p.x, p.y - 6);
 
     // --- companion selectivity strip along the bottom ---
     const sy = p.y + p.h + 12;
@@ -233,7 +234,12 @@ export default function mount(stage) {
     const sx0 = p.x;
     ctx.fillStyle = pal.bone;
     ctx.globalAlpha = 0.65;
+    ctx.textAlign = 'left';
     ctx.fillText('selective gate:', sx0, sy - 4);
+    // compact glyph legend, right-aligned to the strip so it never overflows
+    ctx.textAlign = 'right';
+    ctx.fillText('■ keep   □ forget', p.x + p.w, sy - 4);
+    ctx.textAlign = 'left';
     ctx.globalAlpha = 1;
     for (let i = 0; i < cellN; i++) {
       const cx = sx0 + i * (cellW + cellGap);
@@ -249,10 +255,6 @@ export default function mount(stage) {
         ctx.strokeRect(cx, cy, cellW, 14);
       }
     }
-    ctx.fillStyle = pal.bone;
-    ctx.globalAlpha = 0.55;
-    ctx.fillText('filled = keep   hollow = forget', sx0 + totalW + 12, sy + 16);
-    ctx.globalAlpha = 1;
   }
 
   function update(dt, e) {

@@ -181,8 +181,12 @@ export default function mount(stage) {
     // --- state caption: the "no backward pass" point ---
     ctx.textAlign = 'left';
     ctx.fillStyle = neuromod ? pal.synapse : pal.graphite;
+    // shorten on narrow canvases so the honest caption never runs off-screen
+    const wide = e.w >= 440;
     const msg = neuromod
-      ? `neuromod ON — local gated plasticity, context ${context} (no backward pass)`
+      ? wide
+        ? `neuromod ON — local gated plasticity, context ${context} (no backward pass)`
+        : `neuromod ON · ctx ${context} · no backprop`
       : 'neuromod OFF — all weights fixed';
     ctx.fillText(msg, 12, e.h - 10);
     ctx.textAlign = 'left';

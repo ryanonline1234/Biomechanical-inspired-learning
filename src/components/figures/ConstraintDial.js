@@ -8,10 +8,11 @@
                   the 20-watt brain becomes the spec sheet and brain-like,
                   energy-first designs become mandatory          (synapse, warm)
 
-   Turn the dial with the slider (or drag on the gauge). As t: 0 -> 1 the
-   needle sweeps left->right and the whole scene's accent + background wash
-   lerps from phosphor toward synapse. A readout always names the regime in
-   TEXT, so color is never the only signal.
+   The gauge face is itself the seam: a cool-left / warm-right gradient where
+   the two worlds meet at the midpoint pivot. Turn the dial (slider or drag)
+   and the needle sweeps left->right while the scene's accent + wash lerp from
+   phosphor toward synapse. A readout always names the regime in TEXT, so
+   color is never the only signal.
 
    This is the essay's closing figure: calm, restrained, not flashy.
    ===================================================================== */
@@ -24,18 +25,22 @@ export default function mount(stage) {
   const pal = palette();
   const phoRGB = hexToRgb(pal.phosphor); // silicon / cool pole
   const synRGB = hexToRgb(pal.synapse);  // biological / warm pole
-  const inkRGB = hexToRgb(pal.ink);
+  const boneRGB = hexToRgb(pal.bone);
 
-  // Gauge sweep: a semicircle drawn above its centre. In canvas, angle 0
-  // points right (+x) and PI points left (-x), measured clockwise because
-  // canvas y grows downward. The needle lives in the UPPER half, so we sweep
-  // from the LEFT pole (PI, capability) to the RIGHT pole (0, energy).
-  const A_LEFT = Math.PI;   // capability pole, at the gauge's left end
-  const A_RIGHT = 0;        // energy pole, at the gauge's right end
+  // Gauge sweep: a semicircle over the pivot. Canvas angle 0 points right,
+  // PI points left; sweeping clockwise (false) traces the UPPER half. So the
+  // LEFT pole is PI (capability) and the RIGHT pole is 0 (energy).
+  const A_LEFT = Math.PI;
+  const A_RIGHT = 0;
 
-  // The dial value. Default near 0.15 so the opening state reads "today,
-  // brute force wins" — capability is still the binding constraint.
+  // Dial value. Default near 0.15 so the opening state reads "today, brute
+  // force wins" — capability is still the binding constraint.
   let t = 0.15;
+  let pulse = 0; // idle breathing phase on the active pole (motion-gated)
+
+  const F_LABEL = '600 13px "Space Grotesk", system-ui, sans-serif';
+  const F_MONO = '11px "Spline Sans Mono", monospace';
+  const F_MONO_SM = '10px "Spline Sans Mono", monospace';
 
   // Blend two {r,g,b} colors; returns an rgba() string.
   function mix(a, b, k, alpha = 1) {
@@ -49,75 +54,112 @@ export default function mount(stage) {
     );
   }
 
-  // Map the dial value to the needle angle. t=0 -> A_LEFT, t=1 -> A_RIGHT.
-  function needleAngle(v) {
-    return lerp(A_LEFT, A_RIGHT, clamp(v, 0, 1));
-  }
+  const needleAngle = (v) => lerp(A_LEFT, A_RIGHT, clamp(v, 0, 1));
 
-  // Gauge geometry, derived from the current canvas size each draw.
+  // The controls bar is overlaid on the canvas bottom, so reserve a band for
+  // it and lay the whole gauge out within the remaining drawing area. This
+  // keeps the in-canvas readout clear of the controls at every size.
+  const BOTTOM = 52;
+
+  // Gauge geometry, derived from the drawing area (height minus the reserve).
   function geom(e) {
+    const drawH = Math.max(120, e.h - BOTTOM);
     const cx = e.w / 2;
-    // Sit the pivot low so the upper semicircle uses the canvas height well.
-    const cy = e.h * 0.78;
-    const r = Math.min(e.w * 0.40, e.h * 0.62);
-    return { cx, cy, r };
+    const cy = drawH * 0.8; // pivot low within the drawing area
+    const r = Math.min(e.w * 0.42, drawH * 0.66);
+    return { cx, cy, r, drawH };
   }
 
-  // Regime readout text + emphasis side, by dial value.
+  // Full regime sentence (the load-bearing TEXT — shown in the DOM readout).
   function regime(v) {
-    if (v < 0.40) return { label: 'capability-bound — brute-force digital wins', side: 'left' };
-    if (v > 0.60) return { label: 'energy-bound — brain-like, energy-first wins', side: 'right' };
-    return { label: 'the pivot — the binding constraint is flipping', side: 'mid' };
+    if (v < 0.4) return 'capability-bound — brute-force digital wins';
+    if (v > 0.6) return 'energy-bound — brain-like, energy-first wins';
+    return 'the pivot — the binding constraint is flipping';
   }
 
-  // Idle pulse phase, advanced only when motion is allowed.
-  let pulse = 0;
+  // Short in-canvas tag that fits on one line near the pivot.
+  function regimeShort(v) {
+    if (v < 0.4) return 'digital wins';
+    if (v > 0.6) return 'biology wins';
+    return 'the pivot';
+  }
+
+  // A small two-line corner caption, with the active side brightened.
+  function cornerLabel(ctx, x, y, align, lines, accent, active, glow) {
+    ctx.textAlign = align;
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = F_LABEL;
+    ctx.fillStyle = rgba(accent, active ? 0.92 + glow : 0.5);
+    ctx.fillText(lines[0], x, y);
+    ctx.font = F_MONO_SM;
+    ctx.fillStyle = rgba(boneRGB, active ? 0.62 : 0.42);
+    ctx.fillText(lines[1], x, y + 15);
+  }
 
   function draw(e) {
     const { ctx, w, h } = e;
     ctx.clearRect(0, 0, w, h);
 
     const { cx, cy, r } = geom(e);
-    const reg = regime(t);
+    const accent = mix(phoRGB, synRGB, t, 1);
+    const knobX = cx + Math.cos(needleAngle(t)) * r;
+    const knobY = cy + Math.sin(needleAngle(t)) * r;
+    const glow = (0.5 + 0.5 * Math.sin(pulse)) * 0.18; // 0..0.18, motion-gated
 
-    // --- background wash: a soft vertical gradient that lerps phosphor->synapse,
-    //     kept low-alpha over ink so the scene stays calm. -------------------
-    const wash = ctx.createLinearGradient(0, 0, 0, h);
-    wash.addColorStop(0, mix(phoRGB, synRGB, t, 0.16));
-    wash.addColorStop(1, rgba(inkRGB, 0)); // fade to nothing at the base
-    ctx.fillStyle = wash;
+    // --- background: a soft radial glow trailing the knob, in the blended
+    //     accent, so the whole scene's warmth shifts as the dial turns. ------
+    const halo = ctx.createRadialGradient(knobX, knobY, 0, knobX, knobY, r * 1.5);
+    halo.addColorStop(0, mix(phoRGB, synRGB, t, 0.18));
+    halo.addColorStop(1, mix(phoRGB, synRGB, t, 0));
+    ctx.fillStyle = halo;
     ctx.fillRect(0, 0, w, h);
 
-    // --- the gauge arc, drawn as a thick band from left pole to right pole.
-    //     Its color lerps with the dial so the accent balance shifts visibly.
+    // --- corner pole captions (always present, TEXT-first) -----------------
+    cornerLabel(ctx, 16, 26, 'left', ['capability-bound', 'silicon · brute force'], phoRGB, t < 0.5, glow);
+    cornerLabel(ctx, w - 16, 26, 'right', ['energy-bound', '20-watt brain · energy-first'], synRGB, t >= 0.5, glow);
+
+    // --- gauge track: a recessed graphite base under a cool->warm gradient.
+    //     The gradient IS the seam: silicon on the left, biology on the right. -
     ctx.save();
     ctx.lineCap = 'round';
 
-    // Base track (graphite) under everything for structure.
     ctx.beginPath();
-    ctx.arc(cx, cy, r, A_LEFT, A_RIGHT, false); // false = clockwise over the top
-    ctx.strokeStyle = pal.graphite;
-    ctx.lineWidth = 14;
+    ctx.arc(cx, cy, r, A_LEFT, A_RIGHT, false);
+    ctx.strokeStyle = rgba(hexToRgb(pal.graphite), 0.9);
+    ctx.lineWidth = 18;
     ctx.stroke();
 
-    // Active arc tint: the left portion (already swept) carries the blended
-    // accent; this is the "how far we've turned" fill.
+    const grad = ctx.createLinearGradient(cx - r, 0, cx + r, 0);
+    grad.addColorStop(0.0, rgba(phoRGB, 0.95));
+    grad.addColorStop(0.5, mix(phoRGB, synRGB, 0.5, 0.85));
+    grad.addColorStop(1.0, rgba(synRGB, 0.95));
     ctx.beginPath();
-    ctx.arc(cx, cy, r, A_LEFT, needleAngle(t), false);
-    ctx.strokeStyle = mix(phoRGB, synRGB, t, 0.9);
-    ctx.lineWidth = 8;
+    ctx.arc(cx, cy, r, A_LEFT, A_RIGHT, false);
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 10;
     ctx.stroke();
     ctx.restore();
 
-    // --- tick marks along the arc (purely structural reference) ------------
+    // --- pivot seam marker at the apex: where the two worlds meet ----------
     ctx.save();
-    ctx.strokeStyle = rgba(hexToRgb(pal.bone), 0.35);
+    ctx.strokeStyle = rgba(boneRGB, 0.5);
     ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - r - 9);
+    ctx.lineTo(cx, cy - r + 9);
+    ctx.stroke();
+    ctx.restore();
+
+    // --- tick marks along the arc (structural reference) -------------------
+    ctx.save();
+    ctx.strokeStyle = rgba(boneRGB, 0.28);
+    ctx.lineWidth = 1.25;
     const TICKS = 11;
     for (let i = 0; i < TICKS; i++) {
       const a = lerp(A_LEFT, A_RIGHT, i / (TICKS - 1));
-      const inner = r - 12;
-      const outer = r + (i === 0 || i === TICKS - 1 ? 14 : 8);
+      const end = i === 0 || i === TICKS - 1 ? 11 : 6;
+      const inner = r - 9;
+      const outer = r + end;
       ctx.beginPath();
       ctx.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner);
       ctx.lineTo(cx + Math.cos(a) * outer, cy + Math.sin(a) * outer);
@@ -125,77 +167,53 @@ export default function mount(stage) {
     }
     ctx.restore();
 
-    // --- pole labels (always present, always in TEXT, never color alone) ---
-    ctx.save();
-    ctx.font = '12px "Spline Sans Mono", monospace';
-    ctx.textBaseline = 'middle';
-
-    // Active pole gets a faint pulse in brightness; reduced-motion holds it flat.
-    const leftActive = t < 0.5;
-    const glow = (0.5 + 0.5 * Math.sin(pulse)) * 0.35; // 0..0.35
-
-    // LEFT pole — capability / silicon (phosphor).
-    ctx.textAlign = 'left';
-    ctx.fillStyle = rgba(phoRGB, leftActive ? 0.85 + glow * 0.4 : 0.55);
-    ctx.fillText('capability-bound', cx - r - 6, cy + 22);
-    ctx.fillStyle = rgba(hexToRgb(pal.bone), 0.6);
-    ctx.fillText('silicon · brute force', cx - r - 6, cy + 40);
-
-    // RIGHT pole — energy / biological (synapse).
-    ctx.textAlign = 'right';
-    ctx.fillStyle = rgba(synRGB, !leftActive ? 0.85 + glow * 0.4 : 0.55);
-    ctx.fillText('energy-bound', cx + r + 6, cy + 22);
-    ctx.fillStyle = rgba(hexToRgb(pal.bone), 0.6);
-    ctx.fillText('20-watt brain · energy-first', cx + r + 6, cy + 40);
-    ctx.restore();
-
-    // --- the needle --------------------------------------------------------
-    const a = needleAngle(t);
-    const tipX = cx + Math.cos(a) * (r - 4);
-    const tipY = cy + Math.sin(a) * (r - 4);
-    // A short counterweight tail behind the pivot for balance.
-    const tailX = cx - Math.cos(a) * (r * 0.16);
-    const tailY = cy - Math.sin(a) * (r * 0.16);
-
+    // --- needle + knob -----------------------------------------------------
     ctx.save();
     ctx.lineCap = 'round';
-    ctx.strokeStyle = mix(phoRGB, synRGB, t, 1);
+    // soft shadow under the needle for depth
+    ctx.strokeStyle = accent;
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(tailX, tailY);
-    ctx.lineTo(tipX, tipY);
+    ctx.moveTo(cx - Math.cos(needleAngle(t)) * r * 0.12, cy - Math.sin(needleAngle(t)) * r * 0.12);
+    ctx.lineTo(knobX - Math.cos(needleAngle(t)) * 11, knobY - Math.sin(needleAngle(t)) * 11);
+    ctx.stroke();
+
+    // knob riding the arc, with a glowing halo
+    ctx.shadowColor = accent;
+    ctx.shadowBlur = 12 + glow * 40;
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.arc(knobX, knobY, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = rgba(boneRGB, 0.9);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(knobX, knobY, 7, 0, Math.PI * 2);
     ctx.stroke();
 
     // pivot hub
     ctx.fillStyle = pal.bone;
     ctx.beginPath();
-    ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 5.5, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = mix(phoRGB, synRGB, t, 1);
+    ctx.strokeStyle = accent;
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 5.5, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
 
-    // --- centre readout: regime name (the load-bearing TEXT) ---------------
+    // --- live in-canvas tag: one safe line between the pivot and controls --
     ctx.save();
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
-    ctx.font = '13px "Spline Sans Mono", monospace';
-    ctx.fillStyle = mix(phoRGB, synRGB, t, 1);
-    ctx.fillText(reg.label, cx, cy + 70);
-
-    // small numeric position, de-emphasised
-    ctx.font = '11px "Spline Sans Mono", monospace';
-    ctx.fillStyle = rgba(hexToRgb(pal.bone), 0.5);
-    const pct = Math.round(t * 100);
-    ctx.fillText(`constraint dial — ${pct}% toward energy`, cx, cy + 90);
+    ctx.textBaseline = 'middle';
+    ctx.font = F_LABEL;
+    ctx.fillStyle = accent;
+    ctx.fillText(`${regimeShort(t)} · ${Math.round(t * 100)}% toward energy`, cx, cy + 26);
     ctx.restore();
   }
 
-  // Idle motion only advances the pulse phase; the dial itself never moves
-  // on its own. Reduced motion never enters this path (no autoplay).
   function update(dt) {
     pulse += dt * 1.6; // gentle ~0.25 Hz breathing on the active pole
   }
@@ -203,13 +221,13 @@ export default function mount(stage) {
   const fig = createFigure({ canvas, update, draw });
   const env = fig.env;
 
-  // --- the required control: a range slider that sets the dial value -------
+  // --- required control: a range slider that sets the dial value -----------
   const wrap = document.createElement('div');
-  wrap.className = 'ctrl-label';
+  wrap.className = 'ctrl';
 
   const label = document.createElement('span');
+  label.className = 'ctrl-label';
   label.textContent = 'binding constraint';
-  wrap.append(label);
 
   const slider = document.createElement('input');
   slider.type = 'range';
@@ -219,50 +237,39 @@ export default function mount(stage) {
   slider.step = '0.001';
   slider.value = String(t);
   slider.setAttribute('aria-label', 'Dial from capability-bound to energy-bound');
-  slider.addEventListener('input', () => {
-    t = clamp(parseFloat(slider.value), 0, 1);
-    // Slider is direct interaction: repaint immediately (works whether the
-    // rAF loop is running or — under reduced motion — paused).
-    fig.render();
-  });
 
   const readout = document.createElement('span');
   readout.className = 'ctrl-readout';
-  const syncReadout = () => {
-    readout.textContent = regime(t).label;
+  const sync = () => {
+    readout.textContent = regime(t);
+    readout.classList.toggle('is-bio', t >= 0.5);
   };
-  syncReadout();
-  // keep the DOM readout in step with the dial on every input
-  slider.addEventListener('input', syncReadout);
+  slider.addEventListener('input', () => {
+    t = clamp(parseFloat(slider.value), 0, 1);
+    sync();
+    fig.render(); // direct interaction: repaint whether the loop runs or not
+  });
+  sync();
 
-  wrap.append(slider, readout);
+  wrap.append(label, slider, readout);
   controls.append(wrap);
 
-  // --- optional: drag / click on the gauge also turns the needle ----------
+  // --- drag / click on the gauge also turns the needle ---------------------
+  function setFromPoint(px, py) {
+    const { cx, cy } = geom(env);
+    // Absolute angle from the pivot; |ang| = PI at the left pole, 0 at the
+    // right pole. Map that to t in [0,1].
+    const ang = Math.atan2(py - cy, px - cx);
+    t = clamp(mapRange(Math.abs(ang), Math.PI, 0, 0, 1), 0, 1);
+    slider.value = String(t);
+    sync();
+    fig.render();
+  }
+  let dragging = false;
   function pos(ev) {
     const rect = canvas.getBoundingClientRect();
     return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
   }
-  function setFromPoint(px, py) {
-    const { cx, cy } = geom(env);
-    // Angle of the click relative to the pivot. We only honour the upper
-    // half (the gauge band); below the pivot, clamp to the nearest pole.
-    const dx = px - cx;
-    const dy = py - cy;
-    // atan2 in canvas coords: upper half has dy<0, giving angles in (-PI,0).
-    // Map that to t by measuring how far around from A_LEFT (PI) we are.
-    let ang = Math.atan2(dy, dx); // (-PI, PI]
-    if (ang > 0) ang -= 0; // points below pivot -> clamp handled below
-    // Convert to a 0..1 sweep: A_LEFT(±PI) -> 0, A_RIGHT(0) -> 1.
-    // Use the absolute angle so both -PI and PI read as the left pole.
-    const abs = Math.abs(ang); // 0 at right pole, PI at left pole
-    const v = mapRange(abs, Math.PI, 0, 0, 1); // PI->0, 0->1
-    t = clamp(v, 0, 1);
-    slider.value = String(t);
-    syncReadout();
-    fig.render();
-  }
-  let dragging = false;
   canvas.addEventListener('pointerdown', (ev) => {
     dragging = true;
     const p = pos(ev);
