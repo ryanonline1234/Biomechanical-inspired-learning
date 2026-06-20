@@ -152,7 +152,9 @@ export default function mount(stage) {
     ctx.lineTo(right, axisY);
     ctx.stroke();
     ctx.globalAlpha = 1;
-    drawText(ctx, 'label', 'watt-hours (≈)', right, axisY + 6, {
+    // units label sits a row BELOW the decade ticks so it never collides with
+    // the rightmost tick or the training-run pin parked at the axis end.
+    drawText(ctx, 'label', 'watt-hours (≈)', right, axisY + 20, {
       color: pal.boneDim,
       align: 'right',
       baseline: 'top',
@@ -165,7 +167,9 @@ export default function mount(stage) {
     // stacked value/name which live above the axis. US-home stays above.
     const refY = axisY;
     drawRefPin(ctx, fxOf(LAPTOP_WH), refY, axisY + 34, 'laptop-hour ≈ 50 Wh', pal, { below: true });
-    drawRefPin(ctx, fxOf(HOME_WH), refY, gridTop + 26, 'US home / month ≈ 1 MWh', pal);
+    // US-home reference also drops below the axis so its label clears the gap
+    // bracket / arrow that sweeps across the band above the axis.
+    drawRefPin(ctx, fxOf(HOME_WH), refY, axisY + 34, 'US home / month ≈ 1 MWh', pal, { below: true });
 
     // --- the two hero pins ---
     // Pin heads sit on a band above the axis; stems drop to the axis.
@@ -430,10 +434,17 @@ export default function mount(stage) {
     ctx.save();
     ctx.translate(x0, y0);
 
+    // deterministic count of how many cells may be powered at once (~38%);
+    // folded into the subtitle so it never overflows the narrow right column.
+    const dsTotal = DS_COLS * DS_ROWS;
+    let dsLit = 0;
+    for (let k = 0; k < dsTotal; k++) if ((k * 7 + 3) % 5 < 2) dsLit++;
+    const dsPct = Math.round((dsLit / dsTotal) * 100);
+
     drawText(ctx, 'title', 'Not all of the chip can run at once', 0, 0, {
       baseline: 'top',
     });
-    drawText(ctx, 'label', 'dark silicon · thermal budget', 0, 18, {
+    drawText(ctx, 'label', 'dark silicon · ≈ ' + dsPct + '% powered at once', 0, 18, {
       color: pal.boneDim,
       baseline: 'top',
     });
@@ -476,10 +487,7 @@ export default function mount(stage) {
       }
     }
 
-    const total = DS_COLS * DS_ROWS;
-    const pct = Math.round((litCount / total) * 100);
-
-    // legend + readout on the right
+    // legend on the right
     const lx = gridW + 28;
     let ly = gridTop + 2;
     // powered chip
@@ -502,12 +510,6 @@ export default function mount(stage) {
       baseline: 'middle',
       size: 9.5,
     });
-    ly += 30;
-    drawText(ctx, 'data', '≈ ' + pct + '% can be powered at once', lx, ly, {
-      color: pal.bone,
-      baseline: 'top',
-      size: 11,
-    });
 
     ctx.restore();
   }
@@ -520,10 +522,21 @@ export default function mount(stage) {
     ctx.clearRect(0, 0, w, h);
     ctx.textBaseline = 'alphabetic';
 
+    // Render in a fixed-width virtual space and scale the whole figure to fit.
+    // Desktop (w >= VW) draws 1:1; a narrow mobile canvas is scaled down
+    // uniformly, so the dense headings and labels shrink together instead of
+    // overflowing and colliding.
+    const VW = 540;
+    const scale = Math.min(1, w / VW);
+    ctx.save();
+    ctx.scale(scale, scale);
+    const vw = w / scale;
+    const vh = h / scale;
+
     const padX = 18;
     const padY = 14;
-    const innerW = w - padX * 2;
-    const innerH = h - padY * 2;
+    const innerW = vw - padX * 2;
+    const innerH = vh - padY * 2;
 
     // weight the three rows: budget axis is the protagonist, then the wall,
     // then a shorter dark-silicon row. Gaps between rows.
@@ -539,6 +552,7 @@ export default function mount(stage) {
     drawMemoryWall(e, padX, y, innerW, hB);
     y += hB + gap;
     drawDarkSilicon(e, padX, y, innerW, hC);
+    ctx.restore();
   }
 
   const fig0 = createFigure({ canvas, update, draw });

@@ -14,11 +14,14 @@ interface Props {
   figure: Figure;
   /** aspect-ratio for the stage; tweak per figure where useful */
   ratio?: string;
+  /** optional taller aspect-ratio used at mobile widths (dense figures) */
+  ratioMobile?: string;
   /** optional instance variant (e.g. hero vs crux) for figures reused in
       more than one place; surfaced to the module as stage.dataset.variant */
   variant?: string;
 }
-const { figure, ratio = '16 / 10', variant } = Astro.props;
+const { figure, ratio = '16 / 10', ratioMobile, variant } = Astro.props;
+const ratioVars = `--fig-ratio: ${ratio}; --fig-ratio-m: ${ratioMobile ?? ratio};`;
 ---
 
 <figure class="figure" id={`fig-${figure.id}-${Math.random().toString(36).slice(2, 7)}`}>
@@ -28,7 +31,7 @@ const { figure, ratio = '16 / 10', variant } = Astro.props;
     class="figure__stage"
     data-figure={figure.id}
     data-variant={variant}
-    style={`--fig-ratio: ${ratio};`}
+    style={ratioVars}
   >
     <div class="figure__surface">
       <canvas class="figure__canvas" aria-hidden="true"></canvas>
@@ -75,6 +78,14 @@ const { figure, ratio = '16 / 10', variant } = Astro.props;
     position: relative;
     width: 100%;
     aspect-ratio: var(--fig-ratio);
+  }
+
+  /* Dense figures can opt into a taller canvas at mobile widths so their
+     stacked sections keep room instead of overlapping. */
+  @media (max-width: 60rem) {
+    .figure__surface {
+      aspect-ratio: var(--fig-ratio-m, var(--fig-ratio));
+    }
   }
 
   .figure__canvas {

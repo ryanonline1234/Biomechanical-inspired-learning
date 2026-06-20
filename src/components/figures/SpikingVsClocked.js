@@ -124,14 +124,16 @@ export default function mount(stage) {
   // ===================================================================
   function drawChip(e, x0, y0, size, opts) {
     const { ctx } = e;
-    const { title, color, allLit, litSet, sub } = opts;
+    const { title, color, allLit, litSet, energy, qual } = opts;
     ctx.save();
     ctx.translate(x0, y0);
 
+    // title centered over the grid so a wide title can't run off the edge
     ctx.font = head;
     ctx.fillStyle = pal.bone;
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText(title, 0, -10);
+    ctx.textAlign = 'center';
+    ctx.fillText(title, size / 2, -10);
 
     const pad = 4;
     const cw = (size - pad * (GRID - 1)) / GRID;
@@ -155,10 +157,14 @@ export default function mount(stage) {
     }
     ctx.globalAlpha = 1;
 
-    // subtitle / energy readout under the grid
+    // energy readout + qualifier: two short centered lines under the grid so
+    // the right-hand chip's text can't overflow the canvas edge
     ctx.font = font;
     ctx.fillStyle = color;
-    ctx.fillText(sub, 0, size + 16);
+    ctx.fillText(energy, size / 2, size + 16);
+    ctx.fillStyle = pal.graphite;
+    ctx.fillText(qual, size / 2, size + 31);
+    ctx.textAlign = 'left';
 
     ctx.restore();
     return size; // grid pixel height == size
@@ -265,8 +271,18 @@ export default function mount(stage) {
     ctx.clearRect(0, 0, w, h);
     ctx.textBaseline = 'alphabetic';
 
+    // Render in a fixed virtual width and scale to fit, so the crossbar's
+    // input/output labels and the Ohm/Kirchhoff line never overflow a narrow
+    // canvas. Desktop draws ~1:1; mobile scales down uniformly.
+    const VW = 470;
+    const scale = Math.min(1, w / VW);
+    ctx.save();
+    ctx.scale(scale, scale);
+    const vw = w / scale;
+    const vh = h / scale;
+
     const padX = 16;
-    const innerW = w - padX * 2;
+    const innerW = vw - padX * 2;
 
     // top row: two chips side by side
     const chipSize = Math.min(150, (innerW - 40) / 2);
@@ -279,26 +295,29 @@ export default function mount(stage) {
       color: pal.phosphor,
       allLit: true,
       litSet: [],
-      sub: 'energy ≈ ' + digitalEnergy + '  (all cells / tick)',
+      energy: 'energy ≈ ' + digitalEnergy,
+      qual: '(all cells / tick)',
     });
     drawChip(e, rightX, topY, chipSize, {
       title: 'event-driven spiking',
       color: pal.synapse,
       allLit: false,
       litSet: spikes,
-      sub: 'energy ≈ ' + spikingEnergy + '  (few cells / event)',
+      energy: 'energy ≈ ' + spikingEnergy,
+      qual: '(few cells / event)',
     });
 
-    // tick counter centered between the chips
+    // tick counter centered between the chips, below their two-line readouts
     ctx.font = font;
     ctx.fillStyle = pal.graphite;
     ctx.textAlign = 'center';
-    ctx.fillText('tick ' + tick, w / 2, topY + chipSize + 32);
+    ctx.fillText('tick ' + tick, vw / 2, topY + chipSize + 46);
     ctx.textAlign = 'left';
 
-    // crossbar below
-    const cbY = topY + chipSize + 64;
-    drawCrossbar(e, padX, cbY, innerW, h - cbY - 8);
+    // crossbar below, clear of the tick line
+    const cbY = topY + chipSize + 74;
+    drawCrossbar(e, padX, cbY, innerW, vh - cbY - 8);
+    ctx.restore();
   }
 
   // seed an initial sparse pattern so the first frame is meaningful

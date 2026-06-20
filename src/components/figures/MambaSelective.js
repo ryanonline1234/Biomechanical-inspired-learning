@@ -45,17 +45,17 @@ export default function mount(stage) {
     return selective && TOKENS[i] >= KEEP_THRESH;
   }
 
-  function geom(e) {
+  function geom(vw, vh) {
     const padX = 18;
     const left = padX;
-    const right = e.w - padX;
+    const right = vw - padX;
     const n = TOKENS.length;
     const slot = (right - left) / n;
     return {
       left, right, n, slot,
-      trackY: e.h * 0.46,     // baseline of the token bars
-      barMax: e.h * 0.24,     // tallest token bar
-      stateY: e.h * 0.82,     // the memory lane
+      trackY: vh * 0.46,     // baseline of the token bars
+      barMax: vh * 0.24,     // tallest token bar
+      stateY: vh * 0.82,     // the memory lane
     };
   }
   const tokenX = (g, i) => g.left + g.slot * (i + 0.5);
@@ -63,14 +63,23 @@ export default function mount(stage) {
   function draw(e) {
     const { ctx, w, h } = e;
     ctx.clearRect(0, 0, w, h);
-    const g = geom(e);
+
+    // Fixed virtual width scaled to fit, so the per-token KEEP/FORGET labels
+    // and the title row never overflow or collide on a narrow canvas.
+    const VW = 520;
+    const scale = Math.min(1, w / VW);
+    ctx.save();
+    ctx.scale(scale, scale);
+    const vw = w / scale;
+    const vh = h / scale;
+    const g = geom(vw, vh);
 
     // --- title + mode (the load-bearing text) ---
     drawText(ctx, 'title', 'selective state space', 2, 16, { color: pal.bone, baseline: 'middle' });
     drawText(
       ctx, 'label',
       selective ? 'input decides what to keep' : 'fixed gate · every token treated alike',
-      w - 2, 16,
+      vw - 2, 16,
       { color: selective ? pal.phosphor : pal.boneDim, align: 'right', baseline: 'middle' }
     );
 
@@ -151,10 +160,11 @@ export default function mount(stage) {
         ctx, 'data',
         selective ? `kept ${keptN} of ${g.n} — a sparse, input-chosen memory`
                   : 'no selection — the state cannot tell signal from filler',
-        w / 2, g.stateY + 22,
+        vw / 2, g.stateY + 22,
         { color: selective ? pal.phosphor : pal.boneDim, align: 'center', baseline: 'alphabetic', size: 10 }
       );
     }
+    ctx.restore();
   }
 
   function update(dt) {

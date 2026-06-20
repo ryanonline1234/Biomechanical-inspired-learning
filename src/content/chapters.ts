@@ -14,6 +14,10 @@ export interface Figure {
   description: string;
   /** optional spec-style label shown above the figure */
   spec?: string;
+  /** optional canvas aspect-ratio override (desktop) */
+  ratio?: string;
+  /** optional taller canvas aspect-ratio at mobile widths */
+  ratioMobile?: string;
 }
 
 export interface SideNote {
@@ -253,6 +257,8 @@ export const chapters: Chapter[] = [
     ],
     figure: {
       id: 'energy-budget',
+      ratio: '1 / 0.85',
+      ratioMobile: '1 / 1.3',
       caption:
         'Two honest figures. Left: the brain’s ~20 watts against the energy of a large training run, on a log scale. Right: where the energy of a single operation actually goes — data movement dwarfing the arithmetic. That second bar is the memory wall.',
       description:
@@ -274,6 +280,8 @@ export const chapters: Chapter[] = [
     ],
     figure: {
       id: 'spiking-vs-clocked',
+      ratio: '1 / 1',
+      ratioMobile: '3 / 4',
       caption:
         'Left, a clocked digital chip: fully lit every tick. Right, a spiking chip: mostly dark, flaring only on sparse events, with an energy counter that runs far lower. Below, a memristor crossbar does a matrix-vector multiply in physics — and a noise slider degrades the result as you turn it up.',
       description:

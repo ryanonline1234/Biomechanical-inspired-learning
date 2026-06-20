@@ -55,7 +55,12 @@ const leanClass = chapter.lean ? `lean-${chapter.lean}` : '';
         {chapter.figure && (
           <div class="chapter__viz">
             <div class="chapter__viz-sticky">
-              <Figure figure={chapter.figure} variant={chapter.figureVariant} />
+              <Figure
+                figure={chapter.figure}
+                ratio={chapter.figure.ratio}
+                ratioMobile={chapter.figure.ratioMobile}
+                variant={chapter.figureVariant}
+              />
             </div>
           </div>
         )}
