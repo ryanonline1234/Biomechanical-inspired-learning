@@ -25,7 +25,7 @@
    (increments counters, rerolls spikes); the noise slider works live.
    ===================================================================== */
 
-import { createFigure, palette, clamp } from '../lib/canvas.js';
+import { createFigure, palette, clamp, makeSpring, SPRING } from '../lib/canvas.js';
 
 const GRID = 6; // cells per side on each chip
 const CELLS = GRID * GRID;
@@ -79,7 +79,11 @@ export default function mount(stage) {
     [0.1, 0.4, 0.7, 0.3],
     [0.6, 0.1, 0.2, 0.8],
   ];
-  let noise = 0; // 0..1 slider
+  // Crossbar-noise amount, spring-driven so moving the slider EASES the output
+  // degradation toward its new level instead of snapping. The numeric DOM
+  // readout still jumps to the target (text shouldn't lerp); only the canvas
+  // visualization springs. noisyOut() reads noiseS.value.
+  const noiseS = makeSpring(SPRING.snappy, 0);
 
   // clean output: out[j] = Σ_i in[i] * G[i][j]
   function cleanOut() {
@@ -96,8 +100,9 @@ export default function mount(stage) {
     const out = new Array(COLS).fill(0);
     for (let j = 0; j < COLS; j++) {
       let s = 0;
+      const noise = noiseS.value;
       for (let i = 0; i < ROWS; i++) {
-        // multiplicative + additive jitter scaled by the slider
+        // multiplicative + additive jitter scaled by the (springing) noise
         const jitter = (Math.random() * 2 - 1) * noise;
         const g = clamp(G[i][j] * (1 + jitter) + jitter * 0.15, 0, 1.4);
         s += inVec[i] * g;
@@ -117,6 +122,11 @@ export default function mount(stage) {
       advanceTick();
       noisyCache = noisyOut();
     }
+    // Ease the crossbar noise toward the slider target. While the spring is
+    // still moving, resample the noisy output every frame so the degradation
+    // glides up/down smoothly instead of only stepping on tick boundaries.
+    noiseS.step(dt);
+    if (!noiseS.settled()) noisyCache = noisyOut();
   }
 
   // ===================================================================
@@ -367,11 +377,18 @@ export default function mount(stage) {
   readout.className = 'ctrl-readout';
   readout.textContent = '0.00';
   slider.addEventListener('input', () => {
-    noise = parseFloat(slider.value);
-    readout.textContent = noise.toFixed(2);
-    noisyCache = noisyOut();
-    // works whether animating or reduced — repaint immediately
-    fig.render();
+    const target = parseFloat(slider.value);
+    // DOM numeric readout jumps to the target immediately — text shouldn't lerp.
+    readout.textContent = target.toFixed(2);
+    if (env.reduced) {
+      // Reduced motion: snap, resample, paint one honest frame.
+      noiseS.snap(target);
+      noisyCache = noisyOut();
+      fig.render();
+    } else {
+      // Aim the spring; the running loop eases the canvas degradation up to it.
+      noiseS.to(target);
+    }
   });
   wrap.append(slider, readout);
   controls.append(wrap);

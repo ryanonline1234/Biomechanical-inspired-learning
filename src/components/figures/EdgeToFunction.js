@@ -20,12 +20,7 @@
    learned function in phosphor (the silicon mechanism). Both carry a text label.
    ===================================================================== */
 
-import { createFigure, palette, clamp, lerp, drawText } from '../lib/canvas.js';
-
-// Organic ease for the bend.
-function easeInOutCubic(t) {
-  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-}
+import { createFigure, palette, clamp, lerp, drawText, easeDir, DUR } from '../lib/canvas.js';
 
 const WEIGHT = 0.62; // the scalar weight on the wire
 
@@ -56,7 +51,7 @@ export default function mount(stage) {
   let progress = 0;       // 0 = scalar (straight line), 1 = function (curve)
   let animating = false;
   let hovering = false;   // pointer over the plot box (focus/hover ring)
-  const DUR = 0.8;
+  const MORPH_S = DUR.base; // morph duration (seconds)
 
   // Plot box geometry, cached per draw so the hit-test matches the render.
   let box = { x: 0, y: 0, w: 0, h: 0, cx: 0, cy: 0 };
@@ -228,7 +223,9 @@ export default function mount(stage) {
 
   // --- animated / interactive path -----------------------------------------
   function drawAnimated(ctx, e) {
-    const p = easeInOutCubic(clamp(progress, 0, 1));
+    // Directional easing: ease-OUT while opening toward the function (bending),
+    // ease-IN while folding back to the scalar straight line.
+    const p = easeDir(clamp(progress, 0, 1), isFunction);
 
     // The single line that bends from straight (bone) to curve (phosphor).
     const color = bendColor(p);
@@ -294,7 +291,7 @@ export default function mount(stage) {
   function update(dt) {
     if (!animating) return;
     const dir = isFunction ? 1 : -1;
-    progress = clamp(progress + (dir * dt) / DUR, 0, 1);
+    progress = clamp(progress + (dir * dt) / MORPH_S, 0, 1);
     if ((dir > 0 && progress >= 1) || (dir < 0 && progress <= 0)) {
       animating = false;
       if (fig) fig.stop(); // transient settled — go still

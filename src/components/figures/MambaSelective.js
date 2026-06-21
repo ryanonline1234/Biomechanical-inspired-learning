@@ -18,7 +18,7 @@
    (via fig.play()) and stops. Reduced motion shows the fully resolved frame.
    ===================================================================== */
 
-import { createFigure, palette, clamp, lerp, drawText } from '../lib/canvas.js';
+import { createFigure, palette, clamp, lerp, drawText, easeInOut } from '../lib/canvas.js';
 
 // A hand-authored salience sequence: a few genuinely salient tokens (the
 // "keep" set) amid filler. Values in [0,1]; > KEEP_THRESH reads as salient.
@@ -32,7 +32,8 @@ export default function mount(stage) {
   const pal = palette();
 
   let selective = true;   // selective vs fixed gate
-  let head = 0;           // read-head position in token-index space (0..N)
+  let prog = 0;           // normalized sweep progress 0..1 over the whole pass
+  let head = 0;           // read-head position in token-index space (0..N) — eased from prog
   let sweeping = false;
   let didSweep = false;
 
@@ -169,8 +170,11 @@ export default function mount(stage) {
 
   function update(dt) {
     if (!sweeping) return;
-    head += (dt / SWEEP) * TOKENS.length;
-    if (head >= TOKENS.length) {
+    // Advance progress linearly, but read the head off an eased mapping so the
+    // playhead accelerates in and decelerates out instead of hard start/stop.
+    prog = clamp(prog + dt / SWEEP, 0, 1);
+    head = easeInOut(prog) * TOKENS.length;
+    if (prog >= 1) {
       head = TOKENS.length;
       sweeping = false;
       didSweep = true;
@@ -190,6 +194,7 @@ export default function mount(stage) {
       fig.render();
       return;
     }
+    prog = 0;
     head = 0;
     sweeping = true;
     fig.play();

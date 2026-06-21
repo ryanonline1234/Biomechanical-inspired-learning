@@ -21,6 +21,8 @@ import {
   hexToRgb,
   rgba,
   drawText,
+  makeSpring,
+  SPRING,
 } from '../lib/canvas.js';
 
 // Hermite smoothstep over an explicit window [e0, e1].
@@ -69,10 +71,15 @@ export default function mount(stage) {
   const synRGB = hexToRgb(pal.synapse); // biological / learning  (warm)
   const phoRGB = hexToRgb(pal.phosphor); // silicon / retention   (cool)
 
-  let pos = 0.5; // normalized slider position [0,1]
+  // Slider position [0,1] is spring-driven so the readout line, the meter dots
+  // and the live learn/retain percentages SETTLE toward the new value instead of
+  // snapping. Critically damped, so the % readouts never overshoot into a wrong
+  // number. The static curves / lens / grid don't read this — only the position.
+  const posS = makeSpring(SPRING.snappy, 0.5);
 
   function draw(e) {
     const { ctx, w, h } = e;
+    const pos = clamp(posS.value, 0, 1);
     ctx.clearRect(0, 0, w, h);
 
     // ---- plot geometry: curves live in the upper region of the stage ----
@@ -357,8 +364,27 @@ export default function mount(stage) {
     });
   }
 
-  // Slider-driven only: no state to advance and no looping animation.
-  const fig = createFigure({ canvas, draw, autoplay: false });
+  // Advance the spring while it's still settling; stop the loop once it arrives
+  // so the figure isn't in perpetual motion.
+  function update(dt) {
+    posS.step(dt);
+    if (posS.settled()) fig.stop();
+  }
+
+  const fig = createFigure({ canvas, update, draw, autoplay: false });
+  const env = fig.env;
+
+  // Re-aim the slider position: spring toward the target under motion, snap
+  // instantly under reduced motion (one honest static frame).
+  function aim(target) {
+    if (env.reduced) {
+      posS.snap(target);
+      fig.render();
+    } else {
+      posS.to(target);
+      fig.play();
+    }
+  }
 
   // --- the dilemma slider ---
   const label = document.createElement('span');
@@ -371,19 +397,23 @@ export default function mount(stage) {
   slider.className = 'ctrl-slider';
   slider.min = '0';
   slider.max = '1000';
-  slider.value = String(Math.round(pos * 1000));
+  slider.value = String(Math.round(posS.value * 1000));
   slider.setAttribute('aria-label', 'stability–plasticity balance');
   slider.addEventListener('input', () => {
-    pos = clamp(Number(slider.value) / 1000, 0, 1);
-    readout.textContent = readoutText();
-    fig.render();
+    const target = clamp(Number(slider.value) / 1000, 0, 1);
+    // Text snaps to the TARGET immediately (it shouldn't lerp); the readout line
+    // and dots spring toward it.
+    readout.textContent = readoutText(target);
+    aim(target);
   });
   controls.append(slider);
 
-  function readoutText() {
-    const learning = learningAt(pos);
-    const retention = retentionAt(pos);
-    const tag = inBand(pos) ? 'viable' : pos < BAND.lo ? 'rigid' : 'chaotic';
+  // Text readout for a given position. Takes an explicit value so it can name
+  // the TARGET the slider just selected rather than the still-easing spring.
+  function readoutText(p) {
+    const learning = learningAt(p);
+    const retention = retentionAt(p);
+    const tag = inBand(p) ? 'viable' : p < BAND.lo ? 'rigid' : 'chaotic';
     return `learn ${Math.round(learning * 100)}% · retain ${Math.round(
       retention * 100
     )}% · ${tag}`;
@@ -391,7 +421,7 @@ export default function mount(stage) {
 
   const readout = document.createElement('span');
   readout.className = 'ctrl-readout';
-  readout.textContent = readoutText();
+  readout.textContent = readoutText(0.5);
   controls.append(readout);
 
   // legend chips — text labels paired with the meaningful colours.

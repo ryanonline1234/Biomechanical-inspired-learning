@@ -34,6 +34,8 @@ import {
   hexToRgb,
   rgba,
   drawText,
+  makeSpring,
+  SPRING,
 } from '../lib/canvas.js';
 
 // Step drive in [0,1]: low for t < STEP_T, then high and held.
@@ -53,8 +55,12 @@ export default function mount(stage) {
   const phoRGB = hexToRgb(pal.phosphor);
   const boneRGB = hexToRgb(pal.bone);
 
-  // input strength in [0,1]; the input *selects* the dynamics.
-  let input = 0.72;
+  // input strength in [0,1]; the input *selects* the dynamics. Spring-driven so
+  // moving the slider EASES the live tau / curve between its fast and slow
+  // shapes instead of snapping. Critically damped, so the "input → tau" readout
+  // never overshoots into a wrong reading mid-flight. The ghost is unaffected:
+  // it is a FIXED opposite-extreme anchor, never sprung.
+  const inputS = makeSpring(SPRING.snappy, 0.72);
 
   // Reveal transient: 0 -> 1 sweeps the curves in from the step time.
   // Driven on demand via fig.play(); update() calls fig.stop() when done.
@@ -321,7 +327,7 @@ export default function mount(stage) {
   }
 
   // The causal readout: input -> tau (the input SELECTS the dynamics).
-  function drawCausalReadout(ctx, e, liveTau) {
+  function drawCausalReadout(ctx, e, liveTau, input) {
     const x = e.w - 16;
     drawText(ctx, 'data', `input ${input.toFixed(2)}`, x, 30, {
       color: pal.bone,
@@ -349,11 +355,14 @@ export default function mount(stage) {
     const { ctx, w, h } = e;
     ctx.clearRect(0, 0, w, h);
     const p = plotRect(e);
+    // The live input eases via the spring; tau / curve / readout / settle tick
+    // all derive from this one value so they move together.
+    const input = clamp(inputS.value, 0, 1);
     const liveTau = tauOf(input);
 
     // top band: frozen locked-weight schematic + causal readout
     drawSchematic(ctx, e, liveTau);
-    drawCausalReadout(ctx, e, liveTau);
+    drawCausalReadout(ctx, e, liveTau, input);
 
     // plot frame + 0.63 target line + the identical drive
     drawGrid(ctx, p);
@@ -480,17 +489,22 @@ export default function mount(stage) {
   }
 
   function update(dt, e) {
-    // Advance the reveal sweep; settle (stop the loop) when complete.
+    // Ease the live input toward its target (slider-set) value.
+    inputS.step(dt);
+    // Advance the reveal sweep.
     if (reveal < 1) {
       reveal = clamp(reveal + dt / REVEAL_SECS, 0, 1);
-      if (reveal >= 1 && fig) fig.stop();
     }
+    // Stop the loop only once BOTH transients are done: the reveal sweep has
+    // finished AND the input spring has settled. Stopping while either is still
+    // running would freeze the curve mid-form or mid-ease.
+    if (reveal >= 1 && inputS.settled() && fig) fig.stop();
   }
 
   fig = createFigure({ canvas, update, draw, autoplay: false });
   const env = fig.env;
 
-  // Trigger a fresh reveal sweep of the live curve.
+  // Trigger a fresh reveal sweep of the live curve (used on first entry only).
   function replay() {
     if (env.reduced) {
       fig.render();
@@ -498,6 +512,18 @@ export default function mount(stage) {
     }
     reveal = 0;
     fig.play();
+  }
+
+  // Ease the live input toward a target: spring under motion, snap under
+  // reduced. The ghost (fixed extreme) is untouched — only the live curve eases.
+  function aim(target) {
+    if (env.reduced) {
+      inputS.snap(target);
+      fig.render();
+    } else {
+      inputS.to(target);
+      fig.play();
+    }
   }
 
   // --- input slider: the input STRENGTH (it selects the dynamics) ---
@@ -510,20 +536,22 @@ export default function mount(stage) {
   slider.min = '0';
   slider.max = '1';
   slider.step = '0.01';
-  slider.value = String(input);
+  slider.value = String(inputS.value);
   slider.setAttribute('aria-label', 'input strength (selects the time constant)');
 
   const readout = document.createElement('span');
   readout.className = 'ctrl-readout';
-  const updateReadout = () => {
-    readout.textContent = `input ${input.toFixed(2)} → tau ${tauOf(input).toFixed(2)} s`;
+  // The DOM readout names the TARGET being selected — snap it immediately
+  // (text should not ease); the in-canvas curve / tau / readout spring up to it.
+  const updateReadout = (v) => {
+    readout.textContent = `input ${v.toFixed(2)} → tau ${tauOf(v).toFixed(2)} s`;
   };
-  updateReadout();
+  updateReadout(inputS.value);
 
   slider.addEventListener('input', () => {
-    input = clamp(parseFloat(slider.value), 0, 1);
-    updateReadout();
-    replay(); // re-sweep the live curve at the new tau (ghost holds)
+    const target = clamp(parseFloat(slider.value), 0, 1);
+    updateReadout(target);
+    aim(target); // ease the live curve to the new tau (ghost holds fixed)
   });
 
   controls.append(label, slider, readout);
@@ -544,11 +572,11 @@ export default function mount(stage) {
     stepBtn.type = 'button';
     stepBtn.textContent = 'sweep input ⎭';
     stepBtn.addEventListener('click', () => {
-      input = sweep[si % sweep.length];
+      const target = sweep[si % sweep.length];
       si++;
-      slider.value = String(input);
-      updateReadout();
-      fig.render();
+      slider.value = String(target);
+      updateReadout(target);
+      aim(target); // snaps under reduced motion, then renders one frame
     });
     controls.append(stepBtn);
   }

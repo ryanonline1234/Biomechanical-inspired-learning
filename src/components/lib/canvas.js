@@ -211,6 +211,76 @@ export const lerp = (a, b, t) => a + (b - a) * t;
 /** Map x from [a,b] to [c,d]. */
 export const mapRange = (x, a, b, c, d) => c + ((x - a) * (d - c)) / (b - a);
 
+/* =====================================================================
+   Motion tokens + a spring.
+   Shared so figures stop inventing magic numbers and so interactive
+   responses SETTLE instead of snapping. These are the canvas analogue of
+   the project's CSS easing tokens. update(dt) runs in SECONDS.
+   ===================================================================== */
+
+/** Durations in seconds, matched to the project's UI-motion scale. */
+export const DUR = {
+  micro: 0.15, // a toggle blip
+  ui: 0.25,    // a small reveal
+  base: 0.45,  // a morph / unfold
+  sweep: 0.9,  // a one-shot traversal of the whole figure
+};
+
+/** Spring response times (seconds-to-arrive); pass to makeSpring(). */
+export const SPRING = { snappy: 0.34, gentle: 0.5, lazy: 0.7 };
+
+// Easing curves, t in [0,1]. Names mirror the CSS intents:
+//   easeOut   = decelerate — for things ARRIVING / revealing
+//   easeIn    = accelerate — for things LEAVING / folding away
+//   easeInOut = standard   — symmetric A<->B moves and one-shot sweeps
+export const easeOut = (t) => 1 - Math.pow(1 - clamp(t, 0, 1), 3);
+export const easeIn = (t) => { const u = clamp(t, 0, 1); return u * u * u; };
+export const easeInOut = (t) => {
+  const u = clamp(t, 0, 1);
+  return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+};
+/** Direction-aware easing: ease-out while opening (dir>=0), ease-in while closing. */
+export const easeDir = (t, opening) => (opening ? easeOut(t) : easeIn(t));
+
+/**
+ * A critically-damped spring. Settles toward a target with NO overshoot, so an
+ * animated data value (a needle, a meter, a curve parameter) never momentarily
+ * shows a wrong reading. Uses the exact analytic solution of the critically-
+ * damped ODE, so it is unconditionally stable and re-aims smoothly mid-flight
+ * (the difference between "alive" and "snapping").
+ *
+ *   const s = makeSpring(SPRING.snappy, start);
+ *   s.to(target);          // re-aim, keeps momentum
+ *   s.step(dt) -> value;   // advance one frame
+ *   s.snap(v);             // jump instantly (reduced motion)
+ *   s.settled();           // true once it has effectively arrived
+ */
+export function makeSpring(response = SPRING.snappy, initial = 0) {
+  // omega chosen so `response` ≈ time to settle to within ~2%.
+  let omega = 6 / Math.max(0.01, response);
+  let pos = initial;
+  let vel = 0;
+  let target = initial;
+  return {
+    get value() { return pos; },
+    to(t) { target = t; },
+    snap(v) { pos = v; target = v; vel = 0; },
+    setResponse(r) { omega = 6 / Math.max(0.01, r); },
+    step(dt) {
+      const d = Math.min(Math.max(dt, 0), 0.05);
+      const a = pos - target;
+      const b = vel + omega * a;
+      const e = Math.exp(-omega * d);
+      pos = target + (a + b * d) * e;
+      vel = (b - omega * (a + b * d)) * e;
+      return pos;
+    },
+    settled(eps = 0.0015) {
+      return Math.abs(target - pos) < eps && Math.abs(vel) < eps;
+    },
+  };
+}
+
 /** Parse a #rrggbb (or token-resolved) color to {r,g,b}. */
 export function hexToRgb(hex) {
   const h = hex.trim().replace('#', '');

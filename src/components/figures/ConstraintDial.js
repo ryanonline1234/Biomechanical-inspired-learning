@@ -17,7 +17,7 @@
    This is the essay's closing figure: calm, restrained, not flashy.
    ===================================================================== */
 
-import { createFigure, palette, clamp, lerp, mapRange, hexToRgb, rgba } from '../lib/canvas.js';
+import { createFigure, palette, clamp, lerp, mapRange, hexToRgb, rgba, makeSpring, SPRING } from '../lib/canvas.js';
 
 export default function mount(stage) {
   const canvas = stage.querySelector('canvas');
@@ -35,10 +35,11 @@ export default function mount(stage) {
   const A_LEFT = Math.PI;
   const A_RIGHT = 2 * Math.PI;
 
-  // Dial value. Default near 0.15 so the opening state reads "today, brute
-  // force wins" — capability is still the binding constraint.
-  let t = 0.15;
-  let pulse = 0; // idle breathing phase on the active pole (motion-gated)
+  // The dial value is spring-driven so it SETTLES toward where the reader sets
+  // it (slider or drag) instead of snapping. Critically damped, so the live
+  // "% toward energy" readout never overshoots into a wrong number. Default
+  // near 0.15 so the opening state reads "today, brute force wins".
+  const dial = makeSpring(SPRING.snappy, 0.15);
 
   const F_LABEL = '600 13px "Space Grotesk", system-ui, sans-serif';
   const F_MONO = '11px "Spline Sans Mono", monospace';
@@ -103,10 +104,11 @@ export default function mount(stage) {
     ctx.clearRect(0, 0, w, h);
 
     const { cx, cy, r } = geom(e);
+    const t = clamp(dial.value, 0, 1);
     const accent = mix(phoRGB, synRGB, t, 1);
     const knobX = cx + Math.cos(needleAngle(t)) * r;
     const knobY = cy + Math.sin(needleAngle(t)) * r;
-    const glow = (0.5 + 0.5 * Math.sin(pulse)) * 0.18; // 0..0.18, motion-gated
+    const glow = 0; // breathing removed — motion now happens only on interaction
 
     // --- background: a soft radial glow trailing the knob, in the blended
     //     accent, so the whole scene's warmth shifts as the dial turns. ------
@@ -217,11 +219,23 @@ export default function mount(stage) {
   }
 
   function update(dt) {
-    pulse += dt * 1.6; // gentle ~0.25 Hz breathing on the active pole
+    dial.step(dt);
+    if (dial.settled()) fig.stop(); // motion ends when the needle arrives
   }
 
-  const fig = createFigure({ canvas, update, draw });
+  const fig = createFigure({ canvas, update, draw, autoplay: false });
   const env = fig.env;
+
+  // Re-aim the needle: spring toward the target under motion, snap under reduced.
+  function aim(target) {
+    if (env.reduced) {
+      dial.snap(target);
+      fig.render();
+    } else {
+      dial.to(target);
+      fig.play();
+    }
+  }
 
   // --- required control: a range slider that sets the dial value -----------
   const wrap = document.createElement('div');
@@ -237,21 +251,23 @@ export default function mount(stage) {
   slider.min = '0';
   slider.max = '1';
   slider.step = '0.001';
-  slider.value = String(t);
+  slider.value = String(dial.value);
   slider.setAttribute('aria-label', 'Dial from capability-bound to energy-bound');
 
   const readout = document.createElement('span');
   readout.className = 'ctrl-readout';
-  const sync = () => {
-    readout.textContent = regime(t);
-    readout.classList.toggle('is-bio', t >= 0.5);
+  // The DOM readout names the regime being selected — snap it to the target
+  // immediately (text should not lerp); the in-canvas % springs up to it.
+  const sync = (v) => {
+    readout.textContent = regime(v);
+    readout.classList.toggle('is-bio', v >= 0.5);
   };
   slider.addEventListener('input', () => {
-    t = clamp(parseFloat(slider.value), 0, 1);
-    sync();
-    fig.render(); // direct interaction: repaint whether the loop runs or not
+    const target = clamp(parseFloat(slider.value), 0, 1);
+    sync(target);
+    aim(target);
   });
-  sync();
+  sync(0.15);
 
   wrap.append(label, slider, readout);
   controls.append(wrap);
@@ -262,10 +278,10 @@ export default function mount(stage) {
     // Absolute angle from the pivot; |ang| = PI at the left pole, 0 at the
     // right pole. Map that to t in [0,1].
     const ang = Math.atan2(py - cy, px - cx);
-    t = clamp(mapRange(Math.abs(ang), Math.PI, 0, 0, 1), 0, 1);
-    slider.value = String(t);
-    sync();
-    fig.render();
+    const target = clamp(mapRange(Math.abs(ang), Math.PI, 0, 0, 1), 0, 1);
+    slider.value = String(target);
+    sync(target);
+    aim(target);
   }
   let dragging = false;
   function pos(ev) {

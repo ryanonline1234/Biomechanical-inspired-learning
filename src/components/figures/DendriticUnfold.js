@@ -22,7 +22,7 @@
      phosphor = deep net needed to imitate it (silicon)
    ===================================================================== */
 
-import { createFigure, palette, clamp, lerp, drawText } from '../lib/canvas.js';
+import { createFigure, palette, clamp, lerp, drawText, easeDir, DUR } from '../lib/canvas.js';
 
 // Depth-ordered layer widths for the imitation network. Six layers — a
 // concrete stand-in for the 5–8 deep net the 2021 paper reports. Stacked
@@ -33,11 +33,6 @@ const DEPTH = LAYERS.length; // 6
 // Idle ghost opacity for the imitation net (legible, not blank, not loud).
 const GHOST = 0.22;
 
-// Organic ease — slow in, slow out.
-function easeInOutCubic(t) {
-  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-}
-
 export default function mount(stage) {
   const canvas = stage.querySelector('canvas');
   const controls = stage.querySelector('[data-controls]');
@@ -47,7 +42,7 @@ export default function mount(stage) {
   let unfolded = false; // target state
   let progress = 0;     // 0 = ghost net (idle), 1 = full-opacity net
   let animating = false;
-  const DUR = 0.85;     // seconds for the unfold/fold morph
+  const MORPH_S = DUR.base; // seconds for the unfold/fold morph
 
   // Neuron hit region, recomputed each draw so the click test matches render.
   let neuron = { x: 0, y: 0, r: 16 };
@@ -233,7 +228,9 @@ export default function mount(stage) {
     const g = geom(e);
 
     // Under reduced motion we always present the full comparison.
-    const p = e.reduced ? 1 : easeInOutCubic(clamp(progress, 0, 1));
+    // Directional ease: decelerate while unfolding (revealing the net),
+    // accelerate while folding back.
+    const p = e.reduced ? 1 : easeDir(clamp(progress, 0, 1), unfolded);
     const netAlpha = lerp(GHOST, 1, p);
 
     // Connector from neuron to net: "to imitate this →" (graphite, framing).
@@ -291,7 +288,7 @@ export default function mount(stage) {
   function update(dt) {
     if (!animating) return;
     const dir = unfolded ? 1 : -1;
-    progress = clamp(progress + (dir * dt) / DUR, 0, 1);
+    progress = clamp(progress + (dir * dt) / MORPH_S, 0, 1);
     if ((dir > 0 && progress >= 1) || (dir < 0 && progress <= 0)) {
       animating = false;
       if (fig) fig.stop(); // settle: go still once the morph completes
